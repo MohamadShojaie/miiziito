@@ -1,0 +1,12 @@
+/* Miiziito Next — use original design system */
+@import "../styles/styles.css";
+@import "../styles/cp-styles.css";
+
+/* Next-only tweaks */
+html {
+  direction: rtl;
+}
+
+body {
+  margin: 0;
+}

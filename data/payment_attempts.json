@@ -1,0 +1,239 @@
+[
+  {
+    "id": "pat_e95e4cd31550e23d",
+    "paymentId": "pay_smoke1",
+    "attemptNumber": 1,
+    "status": "SUCCESS",
+    "requestMetadata": {
+      "amount": 850000,
+      "terminalId": "term_66a471b41439000a",
+      "provider": "simulator"
+    },
+    "responseMetadata": {
+      "status": "SUCCESS",
+      "responseCode": "00",
+      "errorCode": null,
+      "message": "Simulated approval",
+      "referenceNumber": "238902"
+    },
+    "startedAt": 1787816530720,
+    "completedAt": 1787816530720
+  },
+  {
+    "id": "pat_37b6ce7e5228f27b",
+    "paymentId": "pay_unk1",
+    "attemptNumber": 1,
+    "status": "UNKNOWN",
+    "requestMetadata": {
+      "amount": 1000,
+      "terminalId": "term_66b6ab73637aacaf",
+      "provider": "simulator"
+    },
+    "responseMetadata": {
+      "status": "UNKNOWN",
+      "responseCode": null,
+      "errorCode": "UNKNOWN_RESULT",
+      "message": "Simulated timeout — result unknown",
+      "referenceNumber": "251883"
+    },
+    "startedAt": 1787816543329,
+    "completedAt": 1787816543329
+  },
+  {
+    "id": "pat_50ea3bd8525d5f99",
+    "paymentId": "pay_unk1",
+    "attemptNumber": 2,
+    "status": "INQUIRY_SUCCESS",
+    "requestMetadata": {
+      "action": "inquiry"
+    },
+    "responseMetadata": {
+      "status": "SUCCESS",
+      "responseCode": "00",
+      "message": "Simulated success after inquiry",
+      "referenceNumber": "251883"
+    },
+    "startedAt": 1787816543332,
+    "completedAt": 1787816543332
+  },
+  {
+    "id": "pat_15d2c4a98b71aae7",
+    "paymentId": "pay_9e003a2654954abf",
+    "attemptNumber": 1,
+    "status": "SUCCESS",
+    "requestMetadata": {
+      "amount": 1000,
+      "terminalId": "term_66a471b41439000a",
+      "provider": "simulator"
+    },
+    "responseMetadata": {
+      "status": "SUCCESS",
+      "responseCode": "00",
+      "errorCode": null,
+      "message": "Simulated approval",
+      "referenceNumber": "411095"
+    },
+    "startedAt": 1787817771773,
+    "completedAt": 1787817771773
+  },
+  {
+    "id": "pat_ce75bb4798447cf7",
+    "paymentId": "pay_c5e7cfb215674b9f",
+    "attemptNumber": 1,
+    "status": "SUCCESS",
+    "requestMetadata": {
+      "amount": 479600,
+      "terminalId": "term_66a471b41439000a",
+      "provider": "simulator"
+    },
+    "responseMetadata": {
+      "status": "SUCCESS",
+      "responseCode": "00",
+      "errorCode": null,
+      "message": "Simulated approval",
+      "referenceNumber": "813396"
+    },
+    "startedAt": 1787817800713,
+    "completedAt": 1787817800713
+  },
+  {
+    "id": "pat_c5a2c0a7cc4333a3",
+    "paymentId": "pay_5eb52ac0a729494b",
+    "attemptNumber": 1,
+    "status": "SUCCESS",
+    "requestMetadata": {
+      "amount": 13,
+      "terminalId": "term_66a471b41439000a",
+      "provider": "simulator"
+    },
+    "responseMetadata": {
+      "status": "SUCCESS",
+      "responseCode": "00",
+      "errorCode": null,
+      "message": "Simulated approval",
+      "referenceNumber": "441615"
+    },
+    "startedAt": 1787818874261,
+    "completedAt": 1787818874261
+  },
+  {
+    "id": "pat_7ccb2e7e8422bfff",
+    "paymentId": "pay_4815494853394a52",
+    "attemptNumber": 1,
+    "status": "SUCCESS",
+    "requestMetadata": {
+      "amount": 1365100,
+      "terminalId": "term_66a471b41439000a",
+      "provider": "simulator"
+    },
+    "responseMetadata": {
+      "status": "SUCCESS",
+      "responseCode": "00",
+      "errorCode": null,
+      "message": "Simulated approval",
+      "referenceNumber": "516690"
+    },
+    "startedAt": 1787819054980,
+    "completedAt": 1787819054980
+  },
+  {
+    "id": "pat_c1b675b721830089",
+    "paymentId": "pay_dcee53ac61974f69",
+    "attemptNumber": 1,
+    "status": "SUCCESS",
+    "requestMetadata": {
+      "amount": 207100,
+      "terminalId": "term_66a471b41439000a",
+      "provider": "simulator"
+    },
+    "responseMetadata": {
+      "status": "SUCCESS",
+      "responseCode": "00",
+      "errorCode": null,
+      "message": "Simulated approval",
+      "referenceNumber": "734424"
+    },
+    "startedAt": 1787821274107,
+    "completedAt": 1787821274107
+  },
+  {
+    "id": "pat_2cff210209509a18",
+    "paymentId": "pay_adc403a1ce694fa0",
+    "attemptNumber": 1,
+    "status": "SUCCESS",
+    "requestMetadata": {
+      "amount": 239800,
+      "terminalId": "term_66a471b41439000a",
+      "provider": "simulator"
+    },
+    "responseMetadata": {
+      "status": "SUCCESS",
+      "responseCode": "00",
+      "errorCode": null,
+      "message": "Simulated approval",
+      "referenceNumber": "768044"
+    },
+    "startedAt": 1787821734456,
+    "completedAt": 1787821734456
+  },
+  {
+    "id": "pat_896fba6271b82adb",
+    "paymentId": "pay_168ae277cade4f8d",
+    "attemptNumber": 1,
+    "status": "SUCCESS",
+    "requestMetadata": {
+      "amount": 1000,
+      "terminalId": "term_66a471b41439000a",
+      "provider": "simulator"
+    },
+    "responseMetadata": {
+      "status": "SUCCESS",
+      "responseCode": "00",
+      "errorCode": null,
+      "message": "Simulated approval",
+      "referenceNumber": "712305"
+    },
+    "startedAt": 1787829134036,
+    "completedAt": 1787829134036
+  },
+  {
+    "id": "pat_e58ce0af9658b705",
+    "paymentId": "pay_e5c221350a004420",
+    "attemptNumber": 1,
+    "status": "SUCCESS",
+    "requestMetadata": {
+      "amount": 201650,
+      "terminalId": "term_66a471b41439000a",
+      "provider": "simulator"
+    },
+    "responseMetadata": {
+      "status": "SUCCESS",
+      "responseCode": "00",
+      "errorCode": null,
+      "message": "Simulated approval",
+      "referenceNumber": "177047"
+    },
+    "startedAt": 1787829189102,
+    "completedAt": 1787829189102
+  },
+  {
+    "id": "pat_00f8c7a0782a7036",
+    "paymentId": "pay_9bda0b0c544c465f",
+    "attemptNumber": 1,
+    "status": "SUCCESS",
+    "requestMetadata": {
+      "amount": 201650,
+      "terminalId": "term_66a471b41439000a",
+      "provider": "simulator"
+    },
+    "responseMetadata": {
+      "status": "SUCCESS",
+      "responseCode": "00",
+      "errorCode": null,
+      "message": "Simulated approval",
+      "referenceNumber": "518836"
+    },
+    "startedAt": 1787829192075,
+    "completedAt": 1787829192075
+  }
+]

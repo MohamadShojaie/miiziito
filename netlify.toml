@@ -1,0 +1,16 @@
+# Netlify deploys the static Next.js frontend only.
+# The PHP/Python API and PostgreSQL must run on another host (e.g. Render + Neon).
+
+[build]
+  base = "frontend"
+  command = "npm ci && NEXT_BUILD=1 npm run build"
+  publish = "out"
+
+[build.environment]
+  NODE_VERSION = "20"
+
+# Next.js static export uses trailingSlash: true
+[[redirects]]
+  from = "/api/*"
+  to = "/404.html"
+  status = 404

@@ -1,0 +1,15 @@
+[
+  {
+    "id": "cpn_welcome",
+    "code": "welcome",
+    "label": "خوش‌آمدگویی ۵۰ هزار تومان",
+    "discountType": "fixed",
+    "discountValue": 50000.0,
+    "active": true,
+    "expiresAt": null,
+    "usageLimit": null,
+    "usedCount": 0,
+    "createdAt": 1787664085482,
+    "updatedAt": 1787664087532
+  }
+]

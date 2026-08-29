@@ -1,0 +1,24 @@
+[
+  {
+    "id": "hw_ec24709feb5c92fd",
+    "name": "Printer 192.168.1.2",
+    "type": "receipt_printer",
+    "station": "cashier",
+    "connection": "network",
+    "address": "192.168.1.2",
+    "port": "9100",
+    "paperWidth": "80",
+    "copies": 1,
+    "enabled": true,
+    "notes": "",
+    "isDefault": true,
+    "codePage": "utf8",
+    "manufacturer": "",
+    "model": "",
+    "vendorId": "",
+    "productId": "",
+    "cupsQueue": "",
+    "createdAt": 1787814404477,
+    "updatedAt": 1787819094562
+  }
+]

@@ -1,0 +1,47 @@
+{
+  "aa013e1d52d96026d7959ae17468c2d0398bbd359158ebea": {
+    "created": 1787483363,
+    "role": "cashier",
+    "sandbox": ""
+  },
+  "a37c231ed51c8a5a053fd1010a35a4f17164220db73ebb0f": {
+    "created": 1787483363,
+    "role": "cashier",
+    "sandbox": ""
+  },
+  "a5ab7d51edd5eaddec60df799cbf8b7b56726faf09df68c3": {
+    "created": 1787483510,
+    "role": "dev",
+    "sandbox": "dev"
+  },
+  "3fa45db804512de8f9d5c387d829ccc846eed15249139d27": {
+    "created": 1787484925,
+    "role": "dev",
+    "sandbox": "dev"
+  },
+  "62fd7a61fa9edff8fff9c0620dcff1d1d63109b1e9c6637c": {
+    "created": 1787488307,
+    "role": "cashier",
+    "sandbox": ""
+  },
+  "dc51b92dcea8931769647989a5adf04b8035cc526665c1cd": {
+    "created": 1787488318,
+    "role": "cashier",
+    "sandbox": ""
+  },
+  "df78fbb40778a3c84d852695bfac9093faedd22188673d97": {
+    "created": 1787568372,
+    "role": "dev",
+    "sandbox": "dev"
+  },
+  "30098787db36389fe3d9ffd82fbd887f4af0f96e2b0be652": {
+    "created": 1787816530,
+    "role": "cashier",
+    "sandbox": ""
+  },
+  "edba384470acaf56384e882ce92e7d1bc4f4a5cb74c455b1": {
+    "created": 1787816542,
+    "role": "cashier",
+    "sandbox": ""
+  }
+}

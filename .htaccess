@@ -1,0 +1,51 @@
+RewriteEngine On
+RewriteBase /
+
+<IfModule LiteSpeed>
+RewriteRule ^api/orders/stream - [E=noabort:1]
+</IfModule>
+
+RewriteRule ^api/health/?$ api/index.php?route=health [L,QSA]
+RewriteRule ^api/orders/stream/?$ api/index.php?route=stream [L,QSA]
+RewriteRule ^api/orders/([^/]+)/?$ api/index.php?route=item&id=$1 [L,QSA]
+RewriteRule ^api/orders/?$ api/index.php?route=orders [L,QSA]
+RewriteRule ^api/invoices/([^/]+)/?$ api/index.php?route=invoice-item&id=$1 [L,QSA]
+RewriteRule ^api/invoices/?$ api/index.php?route=invoices [L,QSA]
+
+# Next.js static export (trailingSlash) — cashier panel
+RewriteRule ^admin/?$ admin/index.html [L]
+
+# Super Admin SaaS panel
+RewriteRule ^panel-admin/?$ panel-admin/index.html [L]
+RewriteRule ^panel-admin/login/?$ panel-admin/login/index.html [L]
+RewriteRule ^panel-admin/register/?$ panel-admin/register/index.html [L]
+RewriteRule ^panel-admin/account/?$ panel-admin/account/index.html [L]
+RewriteRule ^panel-admin/manage/?$ panel-admin/manage/index.html [L]
+RewriteRule ^panel-admin/dashboard/?$ panel-admin/dashboard/index.html [L]
+RewriteRule ^panel-admin/requests/?$ panel-admin/requests/index.html [L]
+RewriteRule ^panel-admin/cafes/?$ panel-admin/cafes/index.html [L]
+RewriteRule ^panel-admin/cafes/[^/]+/?$ panel-admin/cafes/_/index.html [L]
+RewriteRule ^panel-admin/plans/?$ panel-admin/plans/index.html [L]
+RewriteRule ^panel-admin/plans/[^/]+/?$ panel-admin/plans/_/index.html [L]
+RewriteRule ^panel-admin/subscriptions/?$ panel-admin/subscriptions/index.html [L]
+RewriteRule ^panel-admin/subscriptions/[^/]+/?$ panel-admin/subscriptions/_/index.html [L]
+RewriteRule ^panel-admin/payments/?$ panel-admin/payments/index.html [L]
+RewriteRule ^panel-admin/payments/[^/]+/?$ panel-admin/payments/_/index.html [L]
+RewriteRule ^panel-admin/coupons/?$ panel-admin/coupons/index.html [L]
+RewriteRule ^panel-admin/analytics/?$ panel-admin/analytics/index.html [L]
+RewriteRule ^panel-admin/analytics/revenue/?$ panel-admin/analytics/revenue/index.html [L]
+RewriteRule ^panel-admin/analytics/customers/?$ panel-admin/analytics/customers/index.html [L]
+RewriteRule ^panel-admin/analytics/subscriptions/?$ panel-admin/analytics/subscriptions/index.html [L]
+RewriteRule ^panel-admin/notifications/?$ panel-admin/notifications/index.html [L]
+RewriteRule ^panel-admin/support/?$ panel-admin/support/index.html [L]
+RewriteRule ^panel-admin/support/[^/]+/?$ panel-admin/support/_/index.html [L]
+RewriteRule ^panel-admin/system/?$ panel-admin/system/index.html [L]
+RewriteRule ^panel-admin/system/health/?$ panel-admin/system/health/index.html [L]
+RewriteRule ^panel-admin/system/settings/?$ panel-admin/system/settings/index.html [L]
+RewriteRule ^panel-admin/audit-logs/?$ panel-admin/audit-logs/index.html [L]
+RewriteRule ^panel-admin/admin-users/?$ panel-admin/admin-users/index.html [L]
+RewriteRule ^panel-admin/roles/?$ panel-admin/roles/index.html [L]
+
+# Super Admin API
+RewriteRule ^api/super-admin/([^/]+)/([^/]+)/?$ api/index.php?route=sa-$1&id=$2 [L,QSA]
+RewriteRule ^api/super-admin/([^/]+)/?$ api/index.php?route=sa-$1 [L,QSA]

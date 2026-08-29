@@ -1,0 +1,22 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: miiziito-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: lumiere
+      POSTGRES_PASSWORD: lumiere
+      POSTGRES_DB: lumiere
+    ports:
+      - "${MIIZIITO_PG_PORT:-5432}:5432"
+    volumes:
+      - miiziito_pg_data:/var/lib/postgresql/data
+      - ./db/schema.sql:/docker-entrypoint-initdb.d/01-schema.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U lumiere -d lumiere"]
+      interval: 3s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  miiziito_pg_data:
