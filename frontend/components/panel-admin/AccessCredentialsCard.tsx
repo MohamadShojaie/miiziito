@@ -70,7 +70,7 @@ export function AccessCredentialsCard({
       <div className="sa-access-card-head">
         <div>
           <h3>اطلاعات دسترسی کافه</h3>
-          <p>اشتراک فعال شد. لینک‌ها و رمزها را ذخیره کنید.</p>
+          <p>اول وارد پنل شوید، از «تنظیمات» شروع کنید، بعد منو بسازید.</p>
         </div>
         <a className="sa-btn sa-btn-primary sa-btn-sm" href={guideUrl} download target="_blank" rel="noreferrer">
           دانلود راهنما

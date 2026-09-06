@@ -1,20 +1,83 @@
 # میزییتو (Miiziito)
 
-پلتفرم SaaS کافه و رستوران — فرانت **Next.js** + API **PHP** (هاست) / Python یا PHP (لوکال).
+پلتفرم SaaS برای کافه و رستوران: منوی آنلاین، پنل صندوق، حساب اشتراک، و پنل مدیریت پلتفرم.
+
+| لایه | تکنولوژی | پوشه |
+|------|----------|------|
+| رابط کاربری | Next.js | `frontend/` |
+| API روی هاست | PHP | `api/` |
+| API لوکال | Python (یا PHP) | `tools/local_api.py` |
+
+---
+
+## اول این را بخوانید: دو پنل جدا
+
+رایج‌ترین اشتباه: قاطی کردن **پنل صندوق کافه** با **حساب اشتراک / سوپرادمین**.
+
+| پنل | برای کی؟ | ورود با چه؟ | آدرس |
+|-----|----------|-------------|------|
+| **صندوق / مدیریت کافه** | اپراتور یا مالک کافه (روزمره) | **رمز صندوق** | `/{slug}/admin/` مثلاً `/test/admin/` |
+| **حساب اشتراک** | مالک کافه (خرید، تمدید، تیکت) | **ایمیل + رمز حساب** | `/panel-admin/account/` |
+| **مدیریت پلتفرم** | صاحب میزییتو (Super Admin) | ایمیل سوپرادمین | `/panel-admin/manage/` |
+| **منوی مشتری** | مشتری نهایی | بدون ورود | `/{slug}/` مثلاً `/test/` |
+| **فروشگاه پلن‌ها** | خریدار جدید | — | `/` یا `/panel-admin/` |
+
+ورود مشترک پنل حساب / سوپرادمین:
+
+`/panel-admin/login/`
+
+---
+
+## نقش‌ها (خلاصه)
+
+1. **مشتری کافه** → منو را می‌بیند و سفارش می‌دهد  
+2. **اپراتور کافه** → با رمز صندوق وارد `/{slug}/admin/` می‌شود  
+3. **مالک کافه** → با ایمیل حساب وارد `/panel-admin/account/` می‌شود  
+4. **صاحب پلتفرم** → کافه‌ها، درخواست‌ها، پشتیبانی و پلن‌ها را از `/panel-admin/manage/` مدیریت می‌کند  
+
+### بعد از فعال شدن اشتراک چه می‌شود؟
+
+سوپرادمین اشتراک را فعال می‌کند → برای مالک یک تیکت **«اطلاعات دسترسی»** ساخته می‌شود که شامل این‌هاست:
+
+- لینک منو  
+- لینک پنل صندوق + رمز صندوق  
+- لینک حساب اشتراک + ایمیل (و در صورت نیاز رمز)  
+- لینک دانلود راهنمای راه‌اندازی  
+
+مالک همان کارت را در حساب / تیکت پشتیبانی می‌بیند و می‌تواند هر مورد را کپی کند.
+
+راهنمای کامل مالک کافه (مرورگر یا دانلود):
+
+`/guides/miiziito-panel-guide.html`  
+فایل محلی: `frontend/public/guides/miiziito-panel-guide.html`
+
+### ترتیب درست راه‌اندازی کافه جدید
+
+1. ورود به **پنل صندوق** با رمز صندوق  
+2. **تنظیمات** (نام، لوگو، پس‌زمینه) → ذخیره  
+3. **منو** (دسته و آیتم)  
+4. **میزها و QR**  
+5. تست منوی آنلاین روی موبایل  
+
+---
+
+## ساختار پوشه‌ها
 
 ```
 lumiere/
-├── frontend/          # Next.js
-├── api/               # PHP API (production)
-├── tools/local_api.py # Python API (dev سریع)
-├── data/              # JSON + secret.php
-├── scripts/           # dev + deploy
-└── dist/              # خروجی deploy (بعد از npm run deploy)
+├── frontend/                 # Next.js (UI)
+├── api/                      # PHP API (production)
+├── tools/local_api.py        # Python API (لوکال)
+├── data/                     # داده‌ها + secret.php
+│   ├── platform/             # کافه‌ها، پلن‌ها، تیکت‌ها، اشتراک‌ها
+│   └── tenants/{cafeId}/     # دادهٔ هر کافه (منو، سفارش، …)
+├── scripts/                  # dev + deploy
+└── dist/                     # خروجی بیلد برای هاست
 ```
 
 ---
 
-## ۱. کار لوکال
+## ۱) اجرای لوکال (توسعه‌دهنده)
 
 ### نصب (یک بار)
 
@@ -23,46 +86,33 @@ cd frontend
 npm install
 ```
 
-### روش A — سریع (Python API + JSON)
+### شروع سرور
+
+از ریشهٔ پروژه:
 
 ```bash
-# از ریشه پروژه:
 npm run dev
 ```
 
-یا:
+این دستور هم API لوکال و هم Next.js را بالا می‌آورد.
 
-```bash
-cd frontend && npm run dev
-```
+| سرویس | آدرس |
+|------|------|
+| سایت / فروشگاه | http://127.0.0.1:3000/ |
+| ورود حساب / پنل ادمین | http://127.0.0.1:3000/panel-admin/login/ |
+| API | پورت `8787` (از طریق پروکسی `/api`) |
 
-- **Platform:** http://127.0.0.1:3000/ (یا `/panel-admin/` برای پنل ادمین)
-- **صندوق (تک کافه):** http://127.0.0.1:3000/admin/
-- **منوی مشتری (UI):** http://127.0.0.1:3000/buzz/
+### ورودهای پیش‌فرض لوکال
 
-رمزها در `data/secret.php`:
+رمزها در `data/secret.php` هستند:
 
-| نقش | رمز |
-|-----|-----|
-| صندوقدار | `125689#` |
-| Super Admin | `owner@miiziito.local` / `MiiziitoOwner#2026` |
+| نقش | چگونه وارد شوید |
+|-----|------------------|
+| Super Admin | ایمیل `owner@miiziito.local` · رمز `MiiziitoOwner#2026` |
+| صندوق یک کافه | رمز داخل تیکت «اطلاعات دسترسی» همان کافه (نه لزوماً رمز قدیمی demo) |
 | Dev sandbox | `lumiere-dev#` |
 
-> Python API چند-مستاجری (slug) را کامل شبیه production پیاده نکرده. برای تست `/buzz/admin/` از روش B استفاده کن.
-
-### روش B — شبیه production (PHP API)
-
-```bash
-npm run dev:php
-```
-
-نیاز: PHP 8.1+ روی Mac (`brew install php`).
-
-- **منوی Buzz:** http://127.0.0.1:3000/buzz/
-- **پنل Buzz:** http://127.0.0.1:3000/buzz/admin/
-- **Super Admin:** http://127.0.0.1:3000/panel-admin/
-
-لوکال از **JSON** استفاده می‌کند. فایل `data/db.local.php` را **حذف یا rename** کن تا با Neon قاطی نشود.
+> برای کافه‌های واقعی روی لوکال، همیشه از لینک و رمز داخل کارت/تیکت دسترسی استفاده کنید.
 
 ### توقف سرور
 
@@ -71,9 +121,19 @@ lsof -tiTCP:3000 -sTCP:LISTEN | xargs kill
 lsof -tiTCP:8787 -sTCP:LISTEN | xargs kill
 ```
 
+### حالت شبیه production (PHP)
+
+اگر PHP 8.1+ دارید:
+
+```bash
+npm run dev:php
+```
+
+لوکال معمولاً روی **JSON** کار می‌کند. اگر `data/db.local.php` دارید و نمی‌خواهید به دیتابیس ابری وصل شوید، آن را حذف یا rename کنید.
+
 ---
 
-## ۲. Deploy روی ParsPack (miiziito.ir)
+## ۲) Deploy روی ParsPack (miiziito.ir)
 
 ### بیلد
 
@@ -81,52 +141,52 @@ lsof -tiTCP:8787 -sTCP:LISTEN | xargs kill
 npm run deploy
 ```
 
-خروجی:
-
-| فایل | مسیر |
-|------|------|
+| خروجی | مسیر |
+|-------|------|
 | ZIP | `dist/miiziito-parspack.zip` |
 | پوشه | `dist/parspack-deploy/` |
 
-این بیلد خودکار:
+بیلد به‌صورت خودکار:
 
-- `data/db.local.php` را **حذف** می‌کند (JSON mode)
-- خط `SetEnv MIIZIITO_DATABASE_URL` را از `.htaccess` **برمی‌دارد**
+- `data/db.local.php` را حذف می‌کند  
+- خط دیتابیس Neon را از `.htaccess` برمی‌دارد  
 
-### آپلود cPanel
+### آپلود
 
-1. `miiziito-parspack.zip` → `public_html` → Extract
-2. اگر سفارش زنده دارید، **`data/` را overwrite نکن**
-3. روی سرور مطمئن شو:
-   - `data/db.local.php` وجود **ندارد**
-   - `.htaccess` خط Neon **ندارد**
+1. ZIP را در `public_html` آپلود و Extract کنید  
+2. اگر دادهٔ زنده دارید، پوشهٔ `data/` را overwrite نکنید  
+3. روی سرور چک کنید:
+   - `data/db.local.php` نباشد  
+   - `.htaccess` خط Neon نداشته باشد  
 
 ### تست بعد از deploy
 
 ```
-https://miiziito.ir/api/index.php?route=health   → "database":"json_files"
+https://miiziito.ir/api/index.php?route=health
 https://miiziito.ir/
 https://miiziito.ir/panel-admin/login/
-https://miiziito.ir/buzz/
-https://miiziito.ir/buzz/admin/
 ```
+
+Health باید `"database":"json_files"` بدهد (اگر JSON mode است).
 
 ---
 
-## ۳. چرخهٔ کار پیشنهادی
+## ۳) چرخهٔ کار پیشنهادی
 
 ```
-1. npm run dev:php          ← توسعه لوکال
+1. npm run dev          ← توسعه لوکال
 2. تست در مرورگر
-3. npm run deploy           ← ساخت zip
+3. npm run deploy       ← ساخت zip
 4. آپلود روی ParsPack
-5. تست health + login روی miiziito.ir
+5. تست health + login روی دامنه
 ```
 
 ---
 
-## نکات
+## نکات مهم
 
-- **Git:** `data/secret.php` و `data/db.local.php` در gitignore هستند — روی سرور دستی بمانند.
-- **Neon PostgreSQL** روی ParsPack معمولاً وصل نمی‌شود → همان JSON کافی است (~۱۰ کافه).
-- **Render** (`miiziito-api.onrender.com`) برای API جداگانه + Neon مناسب است؛ ParsPack = frontend + PHP یکجا.
+- **`data/secret.php`** و **`data/db.local.php`** در git نیستند — روی سرور دستی نگه دارید.  
+- برای مقیاس کوچک، **JSON** کافی است.  
+- منوی هر کافه فقط وقتی وضعیت کافه `active` یا `trial` باشد در دسترس است.  
+- رمز صندوق ≠ رمز حساب اشتراک؛ هر کدام پنل خودش را باز می‌کند.  
+- راهنمای مالک: `/guides/miiziito-panel-guide.html`  
