@@ -113,6 +113,7 @@ export type SupportTicket = {
   id: string;
   tenantId?: string;
   cafeName?: string;
+  cafeOwnerName?: string;
   cafeOwnerEmail?: string;
   subject: string;
   priority: string;
@@ -127,6 +128,7 @@ export type SupportTicket = {
   createdAt: string;
   updatedAt: string;
   lastReplyAt?: string | null;
+  lastActivityAt?: string | null;
 };
 
 export type AuditLog = {

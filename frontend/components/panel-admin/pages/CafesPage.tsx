@@ -2,10 +2,9 @@
 
 import { useEffect, useState } from "react";
 import { saFetch } from "@/lib/super-admin/api";
-import { formatDate } from "@/lib/super-admin/format";
 import type { Cafe, PageResult, Plan } from "@/lib/super-admin/types";
+import { cafeCashierUrl, cafeMenuUrl } from "@/lib/super-admin/tenant-urls";
 import { toast } from "../ui/Toast";
-import { CafeUrlField } from "../CafeUrlField";
 import {
   Badge,
   EmptyState,
@@ -58,33 +57,24 @@ export function CafesPage({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [q, status, page]);
 
-  async function endSubscription(c: Cafe) {
-    if (!confirm(`اشتراک «${c.name}» پایان یابد؟ منوی آنلاین غیرفعال می‌شود.`)) return;
-    try {
-      await saFetch("sa-cafe", {
-        id: c.id,
-        method: "POST",
-        body: JSON.stringify({ action: "end_subscription" }),
-      });
-      toast("اشتراک پایان یافت", "success");
-      load();
-    } catch {
-      toast("پایان اشتراک ممکن نشد", "error");
+  async function deleteCafe(c: Cafe) {
+    if (
+      !confirm(
+        `کافه «${c.name}» برای همیشه حذف شود؟\nمنو، سفارش‌ها، اشتراک و حساب مالک پاک می‌شوند.`
+      )
+    ) {
+      return;
     }
-  }
-
-  async function suspendCafe(c: Cafe) {
-    if (!confirm(`کافه «${c.name}» معلق شود؟`)) return;
     try {
       await saFetch("sa-cafe", {
         id: c.id,
         method: "POST",
-        body: JSON.stringify({ action: "suspend", reason: "تعلیق توسط ادمین" }),
+        body: JSON.stringify({ action: "delete" }),
       });
-      toast("کافه معلق شد", "success");
+      toast("کافه حذف شد", "success");
       load();
     } catch {
-      toast("تعلیق ممکن نشد", "error");
+      toast("حذف کافه ممکن نشد", "error");
     }
   }
 
@@ -113,7 +103,7 @@ export function CafesPage({
     <>
       <PageHeader
         title="کافه‌ها"
-        description="همه کافه‌ها و رستوران‌های روی پلتفرم"
+        description="لیست کافه‌ها — برای جزئیات و مدیریت اشتراک وارد هر کافه شوید"
         actions={
           <button type="button" className="sa-btn sa-btn-primary" onClick={() => setCreateOpen(true)}>
             ایجاد کافه
@@ -166,73 +156,72 @@ export function CafesPage({
         ) : (
           <>
             <div className="sa-table-wrap">
-              <table className="sa-table">
+              <table className="sa-table sa-table--cafes">
                 <thead>
                   <tr>
                     <th>کافه</th>
-                    <th>منو</th>
-                    <th>صندوق</th>
-                    <th>مالک</th>
-                    <th>تلفن</th>
-                    <th>ایمیل</th>
+                    <th>تماس</th>
                     <th>پلن</th>
-                    <th>وضعیت</th>
-                    <th>ایجاد</th>
-                    <th>اقدامات</th>
+                    <th>لینک</th>
+                    <th></th>
                   </tr>
                 </thead>
                 <tbody>
                   {data.items.map((c) => (
                     <tr key={c.id}>
                       <td data-label="کافه">
-                        <strong>{c.name}</strong>
-                        {c.slug ? (
-                          <div style={{ fontSize: "0.75rem", color: "var(--sa-text-faint)" }} dir="ltr">
-                            /{c.slug}/
-                          </div>
-                        ) : null}
-                      </td>
-                      <td data-label="منو">
-                        <CafeUrlField slug={c.slug} kind="menu" />
-                      </td>
-                      <td data-label="صندوق">
-                        <CafeUrlField slug={c.slug} kind="cashier" />
-                      </td>
-                      <td data-label="مالک">{c.ownerName || "—"}</td>
-                      <td data-label="تلفن">{c.phone || "—"}</td>
-                      <td data-label="ایمیل">{c.email || "—"}</td>
-                      <td data-label="پلن">{planName(c.planId)}</td>
-                      <td data-label="وضعیت">
-                        <Badge status={c.status} />
-                      </td>
-                      <td data-label="ایجاد">{formatDate(c.createdAt)}</td>
-                      <td data-label="اقدامات">
-                        <div className="sa-actions-row" style={{ flexWrap: "wrap", gap: 6 }}>
+                        <div className="sa-cafe-cell">
                           <button
                             type="button"
-                            className="sa-btn sa-btn-ghost sa-btn-sm"
+                            className="sa-cafe-name"
                             onClick={() => onNavigate(`/panel-admin/cafes/${c.id}/`)}
                           >
-                            مشاهده
+                            {c.name}
                           </button>
-                          {(c.status === "active" || c.status === "trial") ? (
-                            <button
-                              type="button"
-                              className="sa-btn sa-btn-ghost sa-btn-sm"
-                              onClick={() => endSubscription(c)}
-                            >
-                              پایان اشتراک
-                            </button>
-                          ) : null}
-                          {c.status === "active" || c.status === "trial" ? (
-                            <button
-                              type="button"
-                              className="sa-btn sa-btn-ghost sa-btn-sm"
-                              onClick={() => suspendCafe(c)}
-                            >
-                              تعلیق
-                            </button>
-                          ) : null}
+                          <div className="sa-cafe-meta">
+                            {c.slug ? <span dir="ltr">/{c.slug}/</span> : null}
+                            <Badge status={c.status} />
+                          </div>
+                        </div>
+                      </td>
+                      <td data-label="تماس">
+                        <div className="sa-cafe-contact">
+                          <span>{c.ownerName || "—"}</span>
+                          {c.phone ? <span className="sa-cafe-meta" dir="ltr">{c.phone}</span> : null}
+                          {c.email ? <span className="sa-cafe-meta" dir="ltr">{c.email}</span> : null}
+                        </div>
+                      </td>
+                      <td data-label="پلن">{planName(c.planId)}</td>
+                      <td data-label="لینک">
+                        {c.slug ? (
+                          <div className="sa-cafe-links">
+                            <a href={cafeMenuUrl(c.slug)} target="_blank" rel="noreferrer">
+                              منو
+                            </a>
+                            <a href={cafeCashierUrl(c.slug)} target="_blank" rel="noreferrer">
+                              صندوق
+                            </a>
+                          </div>
+                        ) : (
+                          <span className="sa-cafe-meta">بدون آدرس</span>
+                        )}
+                      </td>
+                      <td data-label="اقدامات">
+                        <div className="sa-cafe-actions">
+                          <button
+                            type="button"
+                            className="sa-btn sa-btn-primary sa-btn-sm"
+                            onClick={() => onNavigate(`/panel-admin/cafes/${c.id}/`)}
+                          >
+                            مدیریت
+                          </button>
+                          <button
+                            type="button"
+                            className="sa-btn sa-btn-ghost sa-btn-sm sa-cafe-delete"
+                            onClick={() => deleteCafe(c)}
+                          >
+                            حذف
+                          </button>
                         </div>
                       </td>
                     </tr>
@@ -242,7 +231,8 @@ export function CafesPage({
             </div>
             <div className="sa-pagination">
               <span>
-                {data.total.toLocaleString("fa-IR")} مورد · صفحه {data.page.toLocaleString("fa-IR")} / {data.totalPages.toLocaleString("fa-IR")}
+                {data.total.toLocaleString("fa-IR")} مورد · صفحه {data.page.toLocaleString("fa-IR")} /{" "}
+                {data.totalPages.toLocaleString("fa-IR")}
               </span>
               <div style={{ display: "flex", gap: 8 }}>
                 <button
@@ -274,11 +264,20 @@ export function CafesPage({
         </div>
         <div className="sa-field">
           <label className="sa-label">مالک</label>
-          <input className="sa-input" value={form.ownerName} onChange={(e) => setForm({ ...form, ownerName: e.target.value })} />
+          <input
+            className="sa-input"
+            value={form.ownerName}
+            onChange={(e) => setForm({ ...form, ownerName: e.target.value })}
+          />
         </div>
         <div className="sa-field">
           <label className="sa-label">ایمیل</label>
-          <input className="sa-input" type="email" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} />
+          <input
+            className="sa-input"
+            type="email"
+            value={form.email}
+            onChange={(e) => setForm({ ...form, email: e.target.value })}
+          />
         </div>
         <div className="sa-field">
           <label className="sa-label">تلفن</label>

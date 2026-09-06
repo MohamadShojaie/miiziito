@@ -107,6 +107,11 @@ export function CafeDetailPage({
         toast(res.banner || "ورود به‌جای کاربر شروع شد", "success");
         return;
       }
+      if (name === "delete") {
+        toast("کافه حذف شد", "success");
+        onNavigate("/panel-admin/cafes/");
+        return;
+      }
       if (res.cafe) setCafe(res.cafe);
       toast("به‌روزرسانی شد", "success");
       load();
@@ -437,10 +442,16 @@ export function CafeDetailPage({
                 type="button"
                 className="sa-btn sa-btn-danger"
                 onClick={() => {
-                  if (confirm("این کافه برای همیشه حذف شود؟")) action("delete");
+                  if (
+                    confirm(
+                      "این کافه برای همیشه حذف شود؟\nمنو، سفارش‌ها، اشتراک و حساب مالک پاک می‌شوند."
+                    )
+                  ) {
+                    action("delete");
+                  }
                 }}
               >
-                حذف
+                حذف کامل
               </button>
             </div>
             <p style={{ marginTop: 16, fontSize: "0.85rem", color: "var(--sa-text-faint)" }}>

@@ -641,6 +641,36 @@ body.sa-panel-active {
   color: var(--sa-warn);
 }
 
+.sa-ticket-subject-cell {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+
+.sa-ticket-user-cell {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  align-items: flex-start;
+}
+
+.sa-ticket-message {
+  padding: 14px 0;
+  border-bottom: 1px solid var(--sa-border);
+}
+
+.sa-ticket-message-meta {
+  font-size: 0.75rem;
+  color: var(--sa-text-faint);
+  margin-bottom: 6px;
+}
+
+.sa-ticket-message-body {
+  white-space: pre-wrap;
+  line-height: 1.6;
+}
+
 .sa-badge {
   display: inline-flex;
   align-items: center;
@@ -1027,6 +1057,83 @@ body.sa-panel-active {
 .sa-url-actions .sa-btn {
   white-space: nowrap;
   text-decoration: none;
+}
+
+.sa-cafe-cell {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  align-items: flex-start;
+}
+
+.sa-cafe-name {
+  background: none;
+  border: none;
+  padding: 0;
+  margin: 0;
+  color: var(--sa-text);
+  font: inherit;
+  font-weight: 700;
+  font-size: 0.98rem;
+  cursor: pointer;
+  text-align: inherit;
+}
+
+.sa-cafe-name:hover {
+  color: var(--sa-accent);
+}
+
+.sa-cafe-meta {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.75rem;
+  color: var(--sa-text-faint);
+}
+
+.sa-cafe-meta .sa-badge {
+  padding: 3px 8px;
+  font-size: 0.72rem;
+}
+
+.sa-cafe-contact {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  align-items: flex-start;
+}
+
+.sa-cafe-links {
+  display: flex;
+  gap: 14px;
+  align-items: center;
+}
+
+.sa-cafe-links a {
+  color: var(--sa-accent);
+  font-size: 0.85rem;
+  font-weight: 700;
+  text-decoration: none;
+}
+
+.sa-cafe-links a:hover {
+  text-decoration: underline;
+}
+
+.sa-cafe-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  justify-content: flex-start;
+}
+
+.sa-cafe-delete {
+  color: var(--sa-danger) !important;
+}
+
+.sa-cafe-delete:hover {
+  background: var(--sa-danger-soft) !important;
 }
 
 .sa-detail-item strong {

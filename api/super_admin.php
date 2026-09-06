@@ -265,6 +265,58 @@ function lumiere_sa_save_collection($name, $data) {
     lumiere_sa_write_json(lumiere_sa_collection_path($name), $data);
 }
 
+/** Recursively delete a directory tree (best-effort). */
+function lumiere_sa_rm_tree($dir) {
+    $dir = (string) $dir;
+    if ($dir === "" || !is_dir($dir)) return;
+    $items = @scandir($dir);
+    if (!is_array($items)) return;
+    foreach ($items as $item) {
+        if ($item === "." || $item === "..") continue;
+        $path = $dir . DIRECTORY_SEPARATOR . $item;
+        if (is_dir($path)) {
+            lumiere_sa_rm_tree($path);
+        } else {
+            @unlink($path);
+        }
+    }
+    @rmdir($dir);
+}
+
+/**
+ * Permanently remove a cafe and related platform + tenant data.
+ * Call after removing the cafe row from the cafes collection (or pass full cafes list).
+ */
+function lumiere_sa_purge_cafe($tenantId) {
+    $tenantId = trim((string) $tenantId);
+    if ($tenantId === "" || !preg_match('/^[a-zA-Z0-9_-]+$/', $tenantId)) {
+        return;
+    }
+
+    $filterTenant = function ($name) use ($tenantId) {
+        $rows = lumiere_sa_load_collection($name, array());
+        if (!is_array($rows)) $rows = array();
+        $next = array();
+        foreach ($rows as $row) {
+            if (!is_array($row)) continue;
+            $tid = isset($row["tenantId"]) ? (string) $row["tenantId"] : "";
+            if ($tid === $tenantId) continue;
+            $next[] = $row;
+        }
+        lumiere_sa_save_collection($name, $next);
+    };
+
+    $filterTenant("cafe_owners");
+    $filterTenant("subscriptions");
+    $filterTenant("recharge_requests");
+    $filterTenant("support_tickets");
+    $filterTenant("impersonations");
+
+    $root = dirname(__DIR__);
+    lumiere_sa_rm_tree($root . "/data/tenants/" . $tenantId);
+    lumiere_sa_rm_tree($root . "/uploads/tenants/" . $tenantId);
+}
+
 function lumiere_sa_hash_password($password, $salt = null) {
     if ($salt === null || $salt === "") {
         $salt = bin2hex(random_bytes(16));
@@ -750,6 +802,9 @@ function lumiere_sa_send_access_ticket($cafe, $owner = null) {
         "tenantId" => $cafe["id"],
         "cafeName" => isset($cafe["name"]) ? $cafe["name"] : "",
         "cafeOwnerEmail" => $email,
+        "cafeOwnerName" => is_array($owner) && !empty($owner["name"])
+            ? (string) $owner["name"]
+            : (isset($cafe["ownerName"]) ? (string) $cafe["ownerName"] : ""),
         "subject" => "اطلاعات دسترسی — منو و پنل مدیریت",
         "priority" => "high",
         "status" => "waiting_customer",
@@ -1031,11 +1086,14 @@ function lumiere_sa_support_ticket_meta($ticket) {
             "isNew" => false,
             "lastMessageFrom" => null,
             "attentionRank" => 0,
+            "lastActivityAt" => null,
+            "cafeOwnerName" => "",
         );
     }
     $messages = isset($ticket["messages"]) && is_array($ticket["messages"]) ? $ticket["messages"] : array();
     $lastFrom = null;
     $lastCafeMsgAt = null;
+    $lastMsgAt = null;
     $hasAdminMsg = false;
     foreach ($messages as $m) {
         if (!is_array($m)) continue;
@@ -1043,6 +1101,7 @@ function lumiere_sa_support_ticket_meta($ticket) {
         if (isset($m["from"]) && $m["from"] === "cafe") {
             $lastCafeMsgAt = isset($m["createdAt"]) ? (string) $m["createdAt"] : $lastCafeMsgAt;
         }
+        if (!empty($m["createdAt"])) $lastMsgAt = (string) $m["createdAt"];
     }
     if (count($messages) > 0) {
         $last = $messages[count($messages) - 1];
@@ -1062,28 +1121,75 @@ function lumiere_sa_support_ticket_meta($ticket) {
     }
     $isNew = $needsAdminReply && $unreadSinceOpen;
     $attentionRank = $isNew ? 2 : ($needsAdminReply ? 1 : 0);
+    $lastActivityAt = "";
+    if (!empty($ticket["lastReplyAt"])) $lastActivityAt = (string) $ticket["lastReplyAt"];
+    if ($lastMsgAt !== null && ($lastActivityAt === "" || strcmp($lastMsgAt, $lastActivityAt) > 0)) {
+        $lastActivityAt = $lastMsgAt;
+    }
+    if ($lastActivityAt === "" && !empty($ticket["createdAt"])) {
+        $lastActivityAt = (string) $ticket["createdAt"];
+    }
     return array(
         "needsAdminReply" => $needsAdminReply,
         "isNew" => $isNew,
         "lastMessageFrom" => $lastFrom,
         "attentionRank" => $attentionRank,
+        "lastActivityAt" => $lastActivityAt !== "" ? $lastActivityAt : null,
     );
 }
 
 function lumiere_sa_enrich_support_tickets($tickets) {
     if (!is_array($tickets)) return array();
+
+    $cafes = lumiere_sa_load_collection("cafes", array());
+    if (!is_array($cafes)) $cafes = array();
+    $cafesById = array();
+    foreach ($cafes as $c) {
+        if (is_array($c) && !empty($c["id"])) $cafesById[(string) $c["id"]] = $c;
+    }
+    $owners = lumiere_sa_load_collection("cafe_owners", array());
+    if (!is_array($owners)) $owners = array();
+    $ownersByTenant = array();
+    foreach ($owners as $o) {
+        if (!is_array($o) || empty($o["tenantId"])) continue;
+        $ownersByTenant[(string) $o["tenantId"]] = $o;
+    }
+
     $out = array();
     foreach ($tickets as $t) {
         if (!is_array($t)) continue;
-        $out[] = array_merge($t, lumiere_sa_support_ticket_meta($t));
+        $meta = lumiere_sa_support_ticket_meta($t);
+        $tenantId = isset($t["tenantId"]) ? (string) $t["tenantId"] : "";
+        $cafe = ($tenantId !== "" && isset($cafesById[$tenantId])) ? $cafesById[$tenantId] : null;
+        $owner = ($tenantId !== "" && isset($ownersByTenant[$tenantId])) ? $ownersByTenant[$tenantId] : null;
+
+        if ((empty($t["cafeName"]) || $t["cafeName"] === null) && is_array($cafe)) {
+            $t["cafeName"] = isset($cafe["name"]) ? (string) $cafe["name"] : "";
+        }
+        $ownerName = isset($t["cafeOwnerName"]) ? trim((string) $t["cafeOwnerName"]) : "";
+        if ($ownerName === "" && is_array($owner) && !empty($owner["name"])) {
+            $ownerName = (string) $owner["name"];
+        }
+        if ($ownerName === "" && is_array($cafe) && !empty($cafe["ownerName"])) {
+            $ownerName = (string) $cafe["ownerName"];
+        }
+        $t["cafeOwnerName"] = $ownerName;
+        if ((empty($t["cafeOwnerEmail"]) || $t["cafeOwnerEmail"] === null)) {
+            if (is_array($owner) && !empty($owner["email"])) {
+                $t["cafeOwnerEmail"] = (string) $owner["email"];
+            } elseif (is_array($cafe) && !empty($cafe["email"])) {
+                $t["cafeOwnerEmail"] = (string) $cafe["email"];
+            }
+        }
+        $out[] = array_merge($t, $meta);
     }
     usort($out, function ($a, $b) {
         $ar = intval(isset($a["attentionRank"]) ? $a["attentionRank"] : 0);
         $br = intval(isset($b["attentionRank"]) ? $b["attentionRank"] : 0);
         if ($ar !== $br) return $br - $ar;
-        $av = isset($a["createdAt"]) ? $a["createdAt"] : "";
-        $bv = isset($b["createdAt"]) ? $b["createdAt"] : "";
-        return strcmp((string) $bv, (string) $av);
+        $av = isset($a["lastActivityAt"]) ? (string) $a["lastActivityAt"] : (isset($a["createdAt"]) ? (string) $a["createdAt"] : "");
+        $bv = isset($b["lastActivityAt"]) ? (string) $b["lastActivityAt"] : (isset($b["createdAt"]) ? (string) $b["createdAt"] : "");
+        return strcmp($bv, $av);
     });
     return $out;
 }
@@ -1133,7 +1239,14 @@ function lumiere_sa_filter_page($items, $searchFields) {
     usort($filtered, function ($a, $b) use ($sort, $order) {
         $av = isset($a[$sort]) ? $a[$sort] : "";
         $bv = isset($b[$sort]) ? $b[$sort] : "";
-        if ($av == $bv) return 0;
+        if ($av == $bv) {
+            // Keep newest activity on top when primary keys tie (e.g. attentionRank).
+            $asec = isset($a["lastActivityAt"]) ? (string) $a["lastActivityAt"] : (isset($a["createdAt"]) ? (string) $a["createdAt"] : "");
+            $bsec = isset($b["lastActivityAt"]) ? (string) $b["lastActivityAt"] : (isset($b["createdAt"]) ? (string) $b["createdAt"] : "");
+            if ($asec === $bsec) return 0;
+            $secCmp = ($asec < $bsec) ? -1 : 1;
+            return ($order === "asc") ? $secCmp : -$secCmp;
+        }
         $cmp = ($av < $bv) ? -1 : 1;
         return ($order === "asc") ? $cmp : -$cmp;
     });
@@ -1865,6 +1978,9 @@ function lumiere_super_admin_handle($method, $route, $id, $body, $headers) {
         $ticket = array(
             "id" => lumiere_sa_new_id("tkt"),
             "tenantId" => isset($owner["tenantId"]) ? $owner["tenantId"] : null,
+            "cafeName" => is_array($cafe) && isset($cafe["name"]) ? (string) $cafe["name"] : "",
+            "cafeOwnerName" => isset($owner["name"]) ? (string) $owner["name"] : (is_array($cafe) && isset($cafe["ownerName"]) ? (string) $cafe["ownerName"] : ""),
+            "cafeOwnerEmail" => isset($owner["email"]) ? (string) $owner["email"] : "",
             "subject" => "درخواست " . $reqType . " — " . (isset($plan["name"]) ? $plan["name"] : "") . " (" . $cycle . ")",
             "priority" => "normal",
             "status" => "open",
@@ -2293,6 +2409,7 @@ function lumiere_super_admin_handle($method, $route, $id, $body, $headers) {
             if ($action === "delete") {
                 array_splice($cafes, $idx, 1);
                 lumiere_sa_save_collection("cafes", $cafes);
+                lumiere_sa_purge_cafe($itemId);
                 lumiere_sa_audit($admin, "delete_cafe", "cafe", $itemId, $ip);
                 return array("status" => 200, "body" => array("ok" => true));
             }
@@ -2773,7 +2890,7 @@ function lumiere_super_admin_handle($method, $route, $id, $body, $headers) {
         $tickets = lumiere_sa_enrich_support_tickets($tickets);
         return array(
             "status" => 200,
-            "body" => lumiere_sa_filter_page($tickets, array("id", "subject", "tenantId", "status", "priority", "cafeName", "cafeOwnerEmail")),
+            "body" => lumiere_sa_filter_page($tickets, array("id", "subject", "tenantId", "status", "priority", "cafeName", "cafeOwnerEmail", "cafeOwnerName")),
         );
     }
 
@@ -2810,6 +2927,13 @@ function lumiere_super_admin_handle($method, $route, $id, $body, $headers) {
             $cafeForTicket = lumiere_sa_find_cafe((string) $body["tenantId"]);
             if (is_array($cafeForTicket)) {
                 $ticket["cafeName"] = isset($cafeForTicket["name"]) ? $cafeForTicket["name"] : "";
+                $ticket["cafeOwnerName"] = isset($cafeForTicket["ownerName"]) ? (string) $cafeForTicket["ownerName"] : "";
+                $ticket["cafeOwnerEmail"] = isset($cafeForTicket["email"]) ? (string) $cafeForTicket["email"] : "";
+            }
+            $ownerForTicket = lumiere_sa_find_owner_by_tenant((string) $body["tenantId"]);
+            if (is_array($ownerForTicket)) {
+                if (!empty($ownerForTicket["name"])) $ticket["cafeOwnerName"] = (string) $ownerForTicket["name"];
+                if (!empty($ownerForTicket["email"])) $ticket["cafeOwnerEmail"] = (string) $ownerForTicket["email"];
             }
         }
         array_unshift($tickets, $ticket);
@@ -2836,7 +2960,9 @@ function lumiere_super_admin_handle($method, $route, $id, $body, $headers) {
             $ticket["updatedAt"] = lumiere_sa_iso();
             $tickets[$idx] = $ticket;
             lumiere_sa_save_collection("support_tickets", $tickets);
-            return array("status" => 200, "body" => array("ticket" => array_merge($ticket, lumiere_sa_support_ticket_meta($ticket))));
+            $enriched = lumiere_sa_enrich_support_tickets(array($ticket));
+            $out = (is_array($enriched) && isset($enriched[0])) ? $enriched[0] : array_merge($ticket, lumiere_sa_support_ticket_meta($ticket));
+            return array("status" => 200, "body" => array("ticket" => $out));
         }
         if ($method === "POST") {
             if (!lumiere_sa_has_permission($admin, "support.write")) {
@@ -2844,6 +2970,24 @@ function lumiere_super_admin_handle($method, $route, $id, $body, $headers) {
             }
             $ticket = $tickets[$idx];
             $action = (string) (isset($body["action"]) ? $body["action"] : "update");
+            if ($action === "delete") {
+                array_splice($tickets, $idx, 1);
+                lumiere_sa_save_collection("support_tickets", $tickets);
+                $reqs = lumiere_sa_load_collection("recharge_requests", array());
+                if (is_array($reqs)) {
+                    $changed = false;
+                    foreach ($reqs as $ri => $req) {
+                        if (!is_array($req)) continue;
+                        if (isset($req["ticketId"]) && (string) $req["ticketId"] === (string) $itemId) {
+                            $reqs[$ri]["ticketId"] = null;
+                            $changed = true;
+                        }
+                    }
+                    if ($changed) lumiere_sa_save_collection("recharge_requests", $reqs);
+                }
+                lumiere_sa_audit($admin, "delete_ticket", "support_ticket", $itemId, $ip);
+                return array("status" => 200, "body" => array("ok" => true));
+            }
             if ($action === "reply") {
                 $msgs = isset($ticket["messages"]) && is_array($ticket["messages"]) ? $ticket["messages"] : array();
                 $msgs[] = array(

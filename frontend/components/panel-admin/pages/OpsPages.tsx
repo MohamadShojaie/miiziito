@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { saFetch } from "@/lib/super-admin/api";
-import { formatDate, formatMoney } from "@/lib/super-admin/format";
+import { formatDate, formatDateTime, formatMoney } from "@/lib/super-admin/format";
 import type {
   AdminUser,
   AuditLog,
@@ -143,6 +143,7 @@ const AUDIT_ACTION_FA: Record<string, string> = {
   coupon_create: "ایجاد کد تخفیف",
   support_create: "ایجاد تیکت",
   support_reply: "پاسخ تیکت",
+  delete_ticket: "حذف تیکت",
   request_contact: "تماس برای درخواست",
   request_fulfill: "انجام درخواست",
   request_reject: "رد درخواست",
@@ -709,6 +710,22 @@ export function SupportPage({ onNavigate }: { onNavigate: (href: string) => void
     }
   }
 
+  async function deleteTicket(t: SupportTicket, e?: { stopPropagation: () => void }) {
+    e?.stopPropagation();
+    if (!confirm(`تیکت «${t.subject}» برای همیشه حذف شود؟`)) return;
+    try {
+      await saFetch("sa-support-item", {
+        id: t.id,
+        method: "POST",
+        body: JSON.stringify({ action: "delete" }),
+      });
+      toast("تیکت حذف شد", "success");
+      load();
+    } catch {
+      toast("حذف تیکت ممکن نشد", "error");
+    }
+  }
+
   const newCount = (data?.items || []).filter((t) => t.isNew).length;
   const replyCount = (data?.items || []).filter((t) => t.needsAdminReply).length;
 
@@ -739,7 +756,16 @@ export function SupportPage({ onNavigate }: { onNavigate: (href: string) => void
         ) : (
           <div className="sa-table-wrap">
             <table className="sa-table sa-table--tickets">
-              <thead><tr><th>شناسه</th><th>کافه</th><th>موضوع</th><th>اولویت</th><th>وضعیت</th><th>ایجاد</th></tr></thead>
+              <thead>
+                <tr>
+                  <th>موضوع</th>
+                  <th>کاربر</th>
+                  <th>کافه</th>
+                  <th>وضعیت</th>
+                  <th>آخرین پیام</th>
+                  <th></th>
+                </tr>
+              </thead>
               <tbody>
                 {data.items.map((t) => (
                   <tr
@@ -747,23 +773,48 @@ export function SupportPage({ onNavigate }: { onNavigate: (href: string) => void
                     className={[
                       t.isNew ? "sa-ticket-row--new" : "",
                       t.needsAdminReply && !t.isNew ? "sa-ticket-row--attention" : "",
-                    ].filter(Boolean).join(" ")}
+                    ]
+                      .filter(Boolean)
+                      .join(" ")}
                     style={{ cursor: "pointer" }}
                     onClick={() => onNavigate(`/panel-admin/support/${t.id}/`)}
                   >
-                    <td data-label="شناسه">
-                      {t.isNew ? <span className="sa-ticket-dot" aria-hidden="true" /> : null}
-                      {t.id.slice(0, 12)}…
-                    </td>
-                    <td data-label="کافه">{t.cafeName || t.tenantId?.slice(0, 12) || "—"}</td>
                     <td data-label="موضوع">
-                      <span className={t.isNew ? "sa-ticket-subject-new" : undefined}>{t.subject}</span>
-                      {t.isNew ? <span className="sa-ticket-new-pill">جدید</span> : null}
-                      {t.needsAdminReply && !t.isNew ? <span className="sa-ticket-reply-pill">نیاز به پاسخ</span> : null}
+                      <div className="sa-ticket-subject-cell">
+                        {t.isNew ? <span className="sa-ticket-dot" aria-hidden="true" /> : null}
+                        <span className={t.isNew ? "sa-ticket-subject-new" : undefined}>{t.subject}</span>
+                        {t.isNew ? <span className="sa-ticket-new-pill">جدید</span> : null}
+                        {t.needsAdminReply && !t.isNew ? (
+                          <span className="sa-ticket-reply-pill">نیاز به پاسخ</span>
+                        ) : null}
+                      </div>
                     </td>
-                    <td data-label="اولویت"><Badge status={t.priority} /></td>
-                    <td data-label="وضعیت"><Badge status={t.status} /></td>
-                    <td data-label="ایجاد">{formatDate(t.createdAt)}</td>
+                    <td data-label="کاربر">
+                      <div className="sa-ticket-user-cell">
+                        <strong>{t.cafeOwnerName || "—"}</strong>
+                        {t.cafeOwnerEmail ? (
+                          <span className="sa-cafe-meta" dir="ltr">
+                            {t.cafeOwnerEmail}
+                          </span>
+                        ) : null}
+                      </div>
+                    </td>
+                    <td data-label="کافه">{t.cafeName || "—"}</td>
+                    <td data-label="وضعیت">
+                      <Badge status={t.status} />
+                    </td>
+                    <td data-label="آخرین پیام">
+                      {formatDateTime(t.lastActivityAt || t.lastReplyAt || t.createdAt)}
+                    </td>
+                    <td data-label="اقدامات">
+                      <button
+                        type="button"
+                        className="sa-btn sa-btn-ghost sa-btn-sm sa-cafe-delete"
+                        onClick={(e) => deleteTicket(t, e)}
+                      >
+                        حذف
+                      </button>
+                    </td>
                   </tr>
                 ))}
               </tbody>
@@ -802,7 +853,9 @@ export function SupportDetailPage({ id, onNavigate }: { id: string; onNavigate: 
     const res = await saFetch<{ ticket: SupportTicket }>("sa-support-item", { id });
     setTicket(res.ticket);
   }
-  useEffect(() => { load().catch(() => setTicket(null)); }, [id]);
+  useEffect(() => {
+    load().catch(() => setTicket(null));
+  }, [id]);
 
   async function sendReply() {
     await saFetch("sa-support-item", { id, method: "POST", body: JSON.stringify({ action: "reply", body: reply }) });
@@ -810,33 +863,81 @@ export function SupportDetailPage({ id, onNavigate }: { id: string; onNavigate: 
     load();
   }
 
+  async function deleteTicket() {
+    if (!ticket) return;
+    if (!confirm(`تیکت «${ticket.subject}» برای همیشه حذف شود؟`)) return;
+    try {
+      await saFetch("sa-support-item", {
+        id,
+        method: "POST",
+        body: JSON.stringify({ action: "delete" }),
+      });
+      toast("تیکت حذف شد", "success");
+      onNavigate("/panel-admin/support/");
+    } catch {
+      toast("حذف تیکت ممکن نشد", "error");
+    }
+  }
+
+  const messagesNewestFirst = [...(ticket?.messages || [])].reverse();
+  const userLabel = [ticket?.cafeOwnerName, ticket?.cafeName, ticket?.cafeOwnerEmail]
+    .filter(Boolean)
+    .join(" · ");
+
   return (
     <>
       <PageHeader
         title={ticket?.subject || "تیکت"}
-        description={ticket?.cafeName ? `${ticket.cafeName}${ticket.cafeOwnerEmail ? ` · ${ticket.cafeOwnerEmail}` : ""}` : id}
-        actions={<button type="button" className="sa-btn sa-btn-ghost" onClick={() => onNavigate("/panel-admin/support/")}>← بازگشت</button>}
+        description={userLabel || id}
+        actions={
+          <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+            <button type="button" className="sa-btn sa-btn-danger sa-btn-sm" onClick={deleteTicket}>
+              حذف کامل
+            </button>
+            <button type="button" className="sa-btn sa-btn-ghost" onClick={() => onNavigate("/panel-admin/support/")}>
+              ← بازگشت
+            </button>
+          </div>
+        }
       />
-      <div className="sa-panel"><div className="sa-panel-body">
-        {ticket ? (
-          <>
-            <div className="sa-actions-row" style={{ marginTop: 0, marginBottom: 16 }}>
-              <Badge status={ticket.status} />
-              <Badge status={ticket.priority} />
-            </div>
-            {(ticket.messages || []).map((m) => (
-              <div key={m.id} style={{ padding: "12px 0", borderBottom: "1px solid var(--sa-border)" }}>
-                <div style={{ fontSize: "0.75rem", color: "var(--sa-text-faint)" }}>{MSG_FROM_FA[m.from] || m.from} · {formatDate(m.createdAt)}</div>
-                <div>{m.body}</div>
+      <div className="sa-panel">
+        <div className="sa-panel-body">
+          {ticket ? (
+            <>
+              <div className="sa-actions-row" style={{ marginTop: 0, marginBottom: 16 }}>
+                <Badge status={ticket.status} />
+                <Badge status={ticket.priority} />
+                <span className="sa-cafe-meta">
+                  ایجاد: {formatDateTime(ticket.createdAt)}
+                  {ticket.lastActivityAt ? ` · آخرین پیام: ${formatDateTime(ticket.lastActivityAt)}` : ""}
+                </span>
               </div>
-            ))}
-            <div className="sa-field" style={{ marginTop: 16 }}>
-              <textarea className="sa-textarea" rows={3} value={reply} onChange={(e) => setReply(e.target.value)} placeholder="پاسخ…" />
-            </div>
-            <button type="button" className="sa-btn sa-btn-primary" onClick={sendReply}>ارسال پاسخ</button>
-          </>
-        ) : <EmptyState title="یافت نشد" />}
-      </div></div>
+              {messagesNewestFirst.map((m) => (
+                <div key={m.id} className="sa-ticket-message">
+                  <div className="sa-ticket-message-meta">
+                    {MSG_FROM_FA[m.from] || m.from} · {formatDateTime(m.createdAt)}
+                  </div>
+                  <div className="sa-ticket-message-body">{m.body}</div>
+                </div>
+              ))}
+              <div className="sa-field" style={{ marginTop: 16 }}>
+                <textarea
+                  className="sa-textarea"
+                  rows={3}
+                  value={reply}
+                  onChange={(e) => setReply(e.target.value)}
+                  placeholder="پاسخ…"
+                />
+              </div>
+              <button type="button" className="sa-btn sa-btn-primary" onClick={sendReply}>
+                ارسال پاسخ
+              </button>
+            </>
+          ) : (
+            <EmptyState title="یافت نشد" />
+          )}
+        </div>
+      </div>
     </>
   );
 }

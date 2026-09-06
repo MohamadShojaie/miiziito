@@ -23,6 +23,22 @@ export function formatDate(iso?: string | null): string {
   }
 }
 
+/** Date + time for support tickets and activity feeds. */
+export function formatDateTime(iso?: string | null): string {
+  if (!iso) return "—";
+  try {
+    return new Date(iso).toLocaleString("fa-IR", {
+      year: "numeric",
+      month: "short",
+      day: "numeric",
+      hour: "2-digit",
+      minute: "2-digit",
+    });
+  } catch {
+    return iso;
+  }
+}
+
 export function formatPct(change: number | null | undefined): string {
   if (change === null || change === undefined) return "";
   const sign = change > 0 ? "+" : "";

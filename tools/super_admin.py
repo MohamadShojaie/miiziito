@@ -279,6 +279,52 @@ def save_collection(name: str, data: Any) -> None:
     _write_json(_collection(name, None), data)
 
 
+def _rm_tree(path: Path) -> None:
+    if not path.exists():
+        return
+    if path.is_file():
+        try:
+            path.unlink()
+        except OSError:
+            pass
+        return
+    for child in path.iterdir():
+        _rm_tree(child)
+    try:
+        path.rmdir()
+    except OSError:
+        pass
+
+
+def purge_cafe(tenant_id: str) -> None:
+    """Permanently remove cafe-related platform rows and tenant files."""
+    tid = re.sub(r"[^a-zA-Z0-9_-]", "", str(tenant_id or ""))
+    if not tid:
+        return
+
+    for name in (
+        "cafe_owners",
+        "subscriptions",
+        "recharge_requests",
+        "support_tickets",
+        "impersonations",
+    ):
+        rows = load_collection(name, [])
+        if not isinstance(rows, list):
+            rows = []
+        save_collection(
+            name,
+            [
+                row
+                for row in rows
+                if not (isinstance(row, dict) and str(row.get("tenantId") or "") == tid)
+            ],
+        )
+
+    _rm_tree(DATA / "tenants" / tid)
+    _rm_tree(ROOT / "uploads" / "tenants" / tid)
+
+
 def _load_cafes_with_slugs() -> list:
     cafes = load_collection("cafes", [])
     if not isinstance(cafes, list):
@@ -723,6 +769,7 @@ def _send_access_ticket(cafe: dict, owner: dict | None = None) -> dict | None:
         "tenantId": cafe.get("id"),
         "cafeName": cafe.get("name") or "",
         "cafeOwnerEmail": email,
+        "cafeOwnerName": (owner or {}).get("name") or cafe.get("ownerName") or "",
         "subject": "اطلاعات دسترسی — منو و پنل مدیریت",
         "priority": "high",
         "status": "waiting_customer",
@@ -913,6 +960,7 @@ def _support_ticket_meta(ticket: dict) -> dict:
         messages = []
     last_from = None
     last_cafe_msg_at = None
+    last_msg_at = None
     has_admin_msg = False
     for m in messages:
         if not isinstance(m, dict):
@@ -921,6 +969,8 @@ def _support_ticket_meta(ticket: dict) -> dict:
             has_admin_msg = True
         if m.get("from") == "cafe":
             last_cafe_msg_at = m.get("createdAt") or last_cafe_msg_at
+        if m.get("createdAt"):
+            last_msg_at = str(m.get("createdAt"))
     if messages:
         last = messages[-1]
         if isinstance(last, dict):
@@ -939,24 +989,64 @@ def _support_ticket_meta(ticket: dict) -> dict:
             unread_since_open = True
     is_new = needs_admin_reply and unread_since_open
     attention_rank = 2 if is_new else (1 if needs_admin_reply else 0)
+    last_activity = str(ticket.get("lastReplyAt") or "")
+    if last_msg_at and (not last_activity or last_msg_at > last_activity):
+        last_activity = last_msg_at
+    if not last_activity:
+        last_activity = str(ticket.get("createdAt") or "")
     return {
         "needsAdminReply": needs_admin_reply,
         "isNew": is_new,
         "lastMessageFrom": last_from,
         "attentionRank": attention_rank,
+        "lastActivityAt": last_activity or None,
     }
 
 
 def _enrich_support_tickets(tickets: list) -> list:
     if not isinstance(tickets, list):
         return []
+    cafes = load_collection("cafes", [])
+    if not isinstance(cafes, list):
+        cafes = []
+    cafes_by_id = {
+        str(c.get("id")): c for c in cafes if isinstance(c, dict) and c.get("id")
+    }
+    owners = load_collection("cafe_owners", [])
+    if not isinstance(owners, list):
+        owners = []
+    owners_by_tenant = {
+        str(o.get("tenantId")): o
+        for o in owners
+        if isinstance(o, dict) and o.get("tenantId")
+    }
     out = []
     for t in tickets:
         if not isinstance(t, dict):
             continue
-        out.append({**t, **_support_ticket_meta(t)})
+        row = {**t, **_support_ticket_meta(t)}
+        tenant_id = str(t.get("tenantId") or "")
+        cafe = cafes_by_id.get(tenant_id) if tenant_id else None
+        owner = owners_by_tenant.get(tenant_id) if tenant_id else None
+        if not row.get("cafeName") and isinstance(cafe, dict):
+            row["cafeName"] = str(cafe.get("name") or "")
+        owner_name = str(row.get("cafeOwnerName") or "").strip()
+        if not owner_name and isinstance(owner, dict) and owner.get("name"):
+            owner_name = str(owner.get("name") or "")
+        if not owner_name and isinstance(cafe, dict) and cafe.get("ownerName"):
+            owner_name = str(cafe.get("ownerName") or "")
+        row["cafeOwnerName"] = owner_name
+        if not row.get("cafeOwnerEmail"):
+            if isinstance(owner, dict) and owner.get("email"):
+                row["cafeOwnerEmail"] = str(owner.get("email") or "")
+            elif isinstance(cafe, dict) and cafe.get("email"):
+                row["cafeOwnerEmail"] = str(cafe.get("email") or "")
+        out.append(row)
     out.sort(
-        key=lambda x: (int(x.get("attentionRank") or 0), str(x.get("createdAt") or "")),
+        key=lambda x: (
+            int(x.get("attentionRank") or 0),
+            str(x.get("lastActivityAt") or x.get("createdAt") or ""),
+        ),
         reverse=True,
     )
     return out
@@ -992,8 +1082,16 @@ def _filter_page(items: list, qs: dict, search_fields: list[str]) -> dict:
         filtered = [i for i in filtered if match(i)]
 
     reverse = order != "asc"
+
+    def sort_key(x: dict):
+        primary = x.get(sort)
+        if primary is None:
+            primary = ""
+        secondary = str(x.get("lastActivityAt") or x.get("createdAt") or "")
+        return (primary, secondary)
+
     try:
-        filtered = sorted(filtered, key=lambda x: x.get(sort) or "", reverse=reverse)
+        filtered = sorted(filtered, key=sort_key, reverse=reverse)
     except Exception:
         pass
 
@@ -1583,6 +1681,9 @@ def handle(
         ticket = {
             "id": _new_id("tkt"),
             "tenantId": owner.get("tenantId"),
+            "cafeName": (cafe or {}).get("name") or "",
+            "cafeOwnerName": owner.get("name") or (cafe or {}).get("ownerName") or "",
+            "cafeOwnerEmail": owner.get("email") or "",
             "subject": f"درخواست {req_type} — {plan.get('name')} ({cycle})",
             "priority": "normal",
             "status": "open",
@@ -1935,6 +2036,7 @@ def handle(
             if action == "delete":
                 cafes.pop(idx)
                 save_collection("cafes", cafes)
+                purge_cafe(item_id)
                 _audit(admin, "delete_cafe", "cafe", item_id, ip)
                 return {"status": 200, "body": {"ok": True}}
             if action == "impersonate":
@@ -2366,7 +2468,7 @@ def handle(
             tickets = []
         tickets = _enrich_support_tickets(tickets)
         return {"status": 200, "body": _filter_page(
-            tickets, qs, ["id", "subject", "tenantId", "status", "priority", "cafeName", "cafeOwnerEmail"]
+            tickets, qs, ["id", "subject", "tenantId", "status", "priority", "cafeName", "cafeOwnerEmail", "cafeOwnerName"]
         )}
 
     if route == "sa-support" and method == "POST":
@@ -2380,6 +2482,7 @@ def handle(
             "id": _new_id("tkt"),
             "tenantId": body.get("tenantId"),
             "cafeName": "",
+            "cafeOwnerName": "",
             "cafeOwnerEmail": "",
             "subject": str(body.get("subject") or "Support request"),
             "priority": str(body.get("priority") or "normal"),
@@ -2404,6 +2507,14 @@ def handle(
             cafe_for_ticket = _find_cafe(str(body.get("tenantId")))
             if cafe_for_ticket:
                 ticket["cafeName"] = cafe_for_ticket.get("name") or ""
+                ticket["cafeOwnerName"] = cafe_for_ticket.get("ownerName") or ""
+                ticket["cafeOwnerEmail"] = cafe_for_ticket.get("email") or ""
+            owner_for_ticket = _find_owner_by_tenant(str(body.get("tenantId")))
+            if owner_for_ticket:
+                if owner_for_ticket.get("name"):
+                    ticket["cafeOwnerName"] = owner_for_ticket.get("name") or ""
+                if owner_for_ticket.get("email"):
+                    ticket["cafeOwnerEmail"] = owner_for_ticket.get("email") or ""
         tickets.insert(0, ticket)
         save_collection("support_tickets", tickets)
         return {"status": 200, "body": {"ticket": ticket}}
@@ -2424,12 +2535,27 @@ def handle(
             ticket["updatedAt"] = _iso()
             tickets[idx] = ticket
             save_collection("support_tickets", tickets)
-            return {"status": 200, "body": {"ticket": {**ticket, **_support_ticket_meta(ticket)}}}
+            enriched = _enrich_support_tickets([ticket])
+            return {"status": 200, "body": {"ticket": enriched[0] if enriched else {**ticket, **_support_ticket_meta(ticket)}}}
         if method == "POST":
             if not has_permission(admin, "support.write"):
                 return {"status": 403, "body": {"error": "forbidden"}}
             ticket = tickets[idx]
             action = str(body.get("action") or "update")
+            if action == "delete":
+                tickets.pop(idx)
+                save_collection("support_tickets", tickets)
+                reqs = load_collection("recharge_requests", [])
+                if isinstance(reqs, list):
+                    changed = False
+                    for ri, req in enumerate(reqs):
+                        if isinstance(req, dict) and str(req.get("ticketId") or "") == str(item_id):
+                            reqs[ri]["ticketId"] = None
+                            changed = True
+                    if changed:
+                        save_collection("recharge_requests", reqs)
+                _audit(admin, "delete_ticket", "support_ticket", item_id, ip)
+                return {"status": 200, "body": {"ok": True}}
             if action == "reply":
                 msgs = ticket.get("messages") or []
                 msgs.append(
