@@ -61,6 +61,8 @@ export function RechargeRequestsPage() {
   const [cardNumber, setCardNumber] = useState("");
   const [cardHolder, setCardHolder] = useState("");
   const [payNote, setPayNote] = useState("");
+  const [defaultCardNumber, setDefaultCardNumber] = useState("");
+  const [defaultCardHolder, setDefaultCardHolder] = useState("");
 
   async function load() {
     setLoading(true);
@@ -86,8 +88,8 @@ export function RechargeRequestsPage() {
       }
       setItems(rows);
       const s = settingsRes.settings || {};
-      if (!cardNumber) setCardNumber(String(s.paymentCardNumber || ""));
-      if (!cardHolder) setCardHolder(String(s.paymentCardHolder || ""));
+      setDefaultCardNumber(String(s.paymentCardNumber || ""));
+      setDefaultCardHolder(String(s.paymentCardHolder || ""));
       setError("");
     } catch {
       setError("بارگذاری درخواست‌ها ناموفق بود.");
@@ -138,6 +140,9 @@ export function RechargeRequestsPage() {
   }
 
   function openPayModal(r: RecReq) {
+    setCardNumber(r.paymentCardNumber || defaultCardNumber);
+    setCardHolder(defaultCardHolder);
+    setPayNote("");
     setPayModal(r);
   }
 

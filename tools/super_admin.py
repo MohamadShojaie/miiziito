@@ -27,6 +27,7 @@ from tenant_slug import (
     provision_live_cafes,
     provision_tenant,
     set_tenant_cashier_password,
+    verify_tenant_cashier_password,
 )
 
 DATA = ROOT / "data"
@@ -588,6 +589,129 @@ def _public_cafe_owner(owner: dict) -> dict:
     }
 
 
+def _public_site_origin() -> str:
+    for key in ("MIIZIITO_SITE_URL", "NEXT_PUBLIC_MIIZIITO_SITE_URL", "LUMIERE_SITE_URL"):
+        val = (os.environ.get(key) or "").strip()
+        if val:
+            return val.rstrip("/")
+    return "https://miiziito.ir"
+
+
+def _find_owner_by_tenant(tenant_id: str) -> dict | None:
+    if not tenant_id:
+        return None
+    owners = load_collection("cafe_owners", [])
+    for o in owners if isinstance(owners, list) else []:
+        if isinstance(o, dict) and str(o.get("tenantId") or "") == str(tenant_id):
+            return o
+    return None
+
+
+def _save_owner(owner: dict) -> None:
+    if not owner.get("id"):
+        return
+    owners = load_collection("cafe_owners", [])
+    if not isinstance(owners, list):
+        owners = []
+    for i, o in enumerate(owners):
+        if isinstance(o, dict) and o.get("id") == owner.get("id"):
+            owners[i] = owner
+            save_collection("cafe_owners", owners)
+            return
+    owners.append(owner)
+    save_collection("cafe_owners", owners)
+
+
+def _set_owner_password(owner: dict, password: str) -> None:
+    owner["passwordHash"] = _hash_password(password)
+    owner["passwordPlain"] = str(password)
+    owner["updatedAt"] = _iso()
+
+
+def _send_access_ticket(cafe: dict, owner: dict | None = None) -> dict | None:
+    if not isinstance(cafe, dict) or not cafe.get("id"):
+        return None
+    if owner is None:
+        owner = _find_owner_by_tenant(str(cafe.get("id") or ""))
+    slug = str(cafe.get("slug") or "").strip()
+    if not slug:
+        return None
+
+    cafes = load_collection("cafes", [])
+    if not isinstance(cafes, list):
+        cafes = []
+    cafe_idx = next((i for i, c in enumerate(cafes) if c.get("id") == cafe.get("id")), -1)
+    if cafe_idx >= 0:
+        cafe = cafes[cafe_idx]
+    cashier_password = str((cafe.get("settings") or {}).get("cashierPassword") or "")
+    if not cashier_password:
+        cashier_password = secrets.token_urlsafe(8)
+        _cafe_set_cashier_password(cafe, cashier_password)
+        if cafe_idx >= 0:
+            cafes[cafe_idx] = cafe
+            save_collection("cafes", cafes)
+
+    origin = _public_site_origin()
+    menu_url = f"{origin}/{slug}/"
+    admin_url = f"{origin}/{slug}/admin/"
+    account_url = f"{origin}/panel-admin/login/"
+    email = str((owner or {}).get("email") or cafe.get("email") or "")
+    owner_pass = str((owner or {}).get("passwordPlain") or "")
+
+    lines = [
+        "اشتراک شما فعال شد. اطلاعات دسترسی کافه:",
+        "",
+        "آدرس منو:",
+        menu_url,
+        "",
+        "آدرس پنل مدیریت (صندوق):",
+        admin_url,
+        "",
+        "رمز ورود پنل مدیریت:",
+        cashier_password,
+        "",
+        "حساب اشتراک (خرید / تمدید / پشتیبانی):",
+        account_url,
+    ]
+    if email:
+        lines.append(f"ایمیل ورود: {email}")
+        if owner_pass:
+            lines.append(f"رمز حساب اشتراک: {owner_pass}")
+        else:
+            lines.append("رمز حساب اشتراک: همان رمزی که هنگام ثبت‌نام وارد کردید.")
+    lines.extend(["", "می‌توانید رمزها را از صفحه حساب اشتراک تغییر دهید."])
+
+    tickets = load_collection("support_tickets", [])
+    if not isinstance(tickets, list):
+        tickets = []
+    ticket = {
+        "id": _new_id("tkt"),
+        "tenantId": cafe.get("id"),
+        "cafeName": cafe.get("name") or "",
+        "cafeOwnerEmail": email,
+        "subject": "اطلاعات دسترسی — منو و پنل مدیریت",
+        "priority": "high",
+        "status": "waiting_customer",
+        "assignedAdminId": None,
+        "relatedRequestId": None,
+        "messages": [
+            {
+                "id": _new_id("msg"),
+                "from": "admin",
+                "body": "\n".join(lines),
+                "createdAt": _iso(),
+            }
+        ],
+        "createdAt": _iso(),
+        "updatedAt": _iso(),
+        "lastReplyAt": _iso(),
+        "adminReadAt": _iso(),
+    }
+    tickets.insert(0, ticket)
+    save_collection("support_tickets", tickets)
+    return ticket
+
+
 def _find_cafe(tenant_id: str) -> dict | None:
     cafes = load_collection("cafes", [])
     for c in cafes if isinstance(cafes, list) else []:
@@ -640,9 +764,9 @@ def _cafe_portal_payload(owner: dict) -> dict:
     current_plan = plan_map.get((current or {}).get("planId")) if current else None
     if not current_plan and cafe:
         current_plan = plan_map.get(cafe.get("planId"))
-    settings = load_collection("settings", {})
-    if not isinstance(settings, dict):
-        settings = {}
+    platform_settings = load_collection("settings", {})
+    if not isinstance(platform_settings, dict):
+        platform_settings = {}
     my_tickets = _cafe_tickets_for_owner(owner)
     ticket_summaries = [
         {
@@ -655,17 +779,32 @@ def _cafe_portal_payload(owner: dict) -> dict:
         }
         for t in my_tickets[:20]
     ]
+    origin = _public_site_origin()
+    slug = str((cafe or {}).get("slug") or "").strip()
+    cashier_password = str(((cafe or {}).get("settings") or {}).get("cashierPassword") or "")
+    cafe_out = dict(cafe) if isinstance(cafe, dict) else cafe
+    if isinstance(cafe_out, dict):
+        cafe_settings = dict(cafe_out.get("settings") or {})
+        cafe_settings.pop("cashierPassword", None)
+        cafe_settings.pop("cashierPasswordHash", None)
+        cafe_out["settings"] = cafe_settings
     return {
         "owner": _public_cafe_owner(owner),
-        "cafe": cafe,
+        "cafe": cafe_out,
         "subscription": current,
         "plan": current_plan,
         "history": tenant_subs[:20],
         "requests": my_reqs[:20],
         "plans": [p for p in plans if p.get("status") == "active"],
-        "paymentInstructions": str(settings.get("paymentInstructions") or ""),
-        "supportPhone": str(settings.get("supportPhone") or ""),
+        "paymentInstructions": str(platform_settings.get("paymentInstructions") or ""),
+        "supportPhone": str(platform_settings.get("supportPhone") or ""),
         "tickets": ticket_summaries,
+        "access": {
+            "menuUrl": f"{origin}/{slug}/" if slug else "",
+            "adminUrl": f"{origin}/{slug}/admin/" if slug else "",
+            "cashierPassword": cashier_password,
+            "accountEmail": str(owner.get("email") or ""),
+        },
     }
 
 
@@ -1110,6 +1249,7 @@ def handle(
             "id": _new_id("cown"),
             "email": email,
             "passwordHash": _hash_password(password),
+            "passwordPlain": password,
             "name": owner_name or cafe_name,
             "phone": phone,
             "tenantId": cafe["id"],
@@ -1120,6 +1260,9 @@ def handle(
         }
         cafes.append(cafe)
         owners.append(owner)
+        # Ensure cashier password exists for admin panel access
+        _cafe_set_cashier_password(cafe, generate_cashier_password())
+        cafes[-1] = cafe
         save_collection("cafes", cafes)
         save_collection("cafe_owners", owners)
         _audit(None, "cafe_register", "cafe", cafe["id"], ip, {"email": email})
@@ -1196,6 +1339,49 @@ def handle(
         if err:
             return err
         return {"status": 200, "body": _cafe_portal_payload(owner)}
+
+    if route == "sa-cafe-change-password" and method == "POST":
+        owner, err = require_cafe(headers, body)
+        if err:
+            return err
+        kind = str(body.get("kind") or "account")
+        current_password = str(body.get("currentPassword") or "")
+        new_password = str(body.get("newPassword") or "")
+        if len(new_password) < 6:
+            return {"status": 400, "body": {"error": "weak_password"}}
+
+        if kind in ("cashier", "admin_panel"):
+            cafe = _find_cafe(str(owner.get("tenantId") or ""))
+            if not cafe:
+                return {"status": 404, "body": {"error": "cafe_not_found"}}
+            existing_plain = str((cafe.get("settings") or {}).get("cashierPassword") or "")
+            has_existing = bool(existing_plain) or has_cashier_password(str(cafe.get("id") or ""))
+            if has_existing:
+                ok = False
+                if current_password and existing_plain and hmac.compare_digest(existing_plain, current_password):
+                    ok = True
+                if not ok and current_password:
+                    verified = verify_tenant_cashier_password(str(cafe.get("id") or ""), current_password)
+                    ok = verified is True
+                if not ok:
+                    return {"status": 401, "body": {"error": "bad_credentials"}}
+            cafes = load_collection("cafes", [])
+            if not isinstance(cafes, list):
+                cafes = []
+            for i, c in enumerate(cafes):
+                if c.get("id") == cafe.get("id"):
+                    _cafe_set_cashier_password(c, new_password)
+                    c["updatedAt"] = _iso()
+                    cafes[i] = c
+                    break
+            save_collection("cafes", cafes)
+            return {"status": 200, "body": {"ok": True, "kind": "cashier", "cashierPassword": new_password}}
+
+        if not current_password or not _verify_password(current_password, str(owner.get("passwordHash") or "")):
+            return {"status": 401, "body": {"error": "bad_credentials"}}
+        _set_owner_password(owner, new_password)
+        _save_owner(owner)
+        return {"status": 200, "body": {"ok": True, "kind": "account"}}
 
     if route == "sa-cafe-support" and method == "GET":
         owner, err = require_cafe(headers, body)
@@ -1516,6 +1702,7 @@ def handle(
                 subs.append(sub)
             save_collection("subscriptions", subs)
             cafes = load_collection("cafes", [])
+            fulfilled_cafe = None
             if isinstance(cafes, list):
                 for i, c in enumerate(cafes):
                     if c.get("id") == tenant_id:
@@ -1527,6 +1714,7 @@ def handle(
                             assign_slug(c, cafes)
                         provision_tenant(c)
                         cafes[i] = c
+                        fulfilled_cafe = c
                         break
                 save_collection("cafes", cafes)
             req["status"] = "fulfilled"
@@ -1534,6 +1722,10 @@ def handle(
             req["adminNote"] = str(body.get("adminNote") or req.get("adminNote") or "")
             req["subscriptionId"] = sub["id"]
             req["updatedAt"] = _iso()
+            if fulfilled_cafe:
+                access_ticket = _send_access_ticket(fulfilled_cafe)
+                if access_ticket and access_ticket.get("id"):
+                    req["accessTicketId"] = access_ticket["id"]
             _audit(
                 admin,
                 "fulfill_recharge_request",
@@ -1640,11 +1832,17 @@ def handle(
                         if s.get("status") not in ("cancelled",):
                             sub = s
                             break
+            owner_row = _find_owner_by_tenant(str(cafe.get("id") or ""))
+            owner_out = None
+            if owner_row:
+                owner_out = _public_cafe_owner(owner_row)
+                owner_out["passwordPlain"] = str(owner_row.get("passwordPlain") or "")
             return {
                 "status": 200,
                 "body": {
                     "cafe": _cafe_for_admin(cafe),
                     "subscription": sub,
+                    "owner": owner_out,
                     "cashierAuth": cashier_auth_meta(str(cafe.get("id") or "")),
                 },
             }

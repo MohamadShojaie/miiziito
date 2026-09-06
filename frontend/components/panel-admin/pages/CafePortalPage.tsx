@@ -124,6 +124,18 @@ export function CafePortalPage({
   const [ticketReply, setTicketReply] = useState("");
   const [loadingTicket, setLoadingTicket] = useState(false);
   const [sendingReply, setSendingReply] = useState(false);
+  const [access, setAccess] = useState<{
+    menuUrl?: string;
+    adminUrl?: string;
+    cashierPassword?: string;
+    accountEmail?: string;
+  }>({});
+  const [accountCurrent, setAccountCurrent] = useState("");
+  const [accountNew, setAccountNew] = useState("");
+  const [cashierCurrent, setCashierCurrent] = useState("");
+  const [cashierNew, setCashierNew] = useState("");
+  const [savingAccountPass, setSavingAccountPass] = useState(false);
+  const [savingCashierPass, setSavingCashierPass] = useState(false);
 
   async function load() {
     setLoading(true);
@@ -139,6 +151,12 @@ export function CafePortalPage({
         paymentInstructions?: string;
         supportPhone?: string;
         tickets?: TicketSummary[];
+        access?: {
+          menuUrl?: string;
+          adminUrl?: string;
+          cashierPassword?: string;
+          accountEmail?: string;
+        };
       }>("sa-cafe-portal");
       setCafe(data.cafe);
       setPlan(data.plan);
@@ -149,6 +167,7 @@ export function CafePortalPage({
       setPaymentInstructions(data.paymentInstructions || "");
       setSupportPhone(data.supportPhone || "");
       setTickets(data.tickets || []);
+      setAccess(data.access || {});
       if (!planId && data.plans?.[0]) setPlanId(data.plans[0].id);
     } catch {
       setError("بارگذاری حساب ممکن نشد. دوباره وارد شوید.");
@@ -264,6 +283,42 @@ export function CafePortalPage({
     }
   }
 
+  async function changePassword(kind: "account" | "cashier") {
+    const currentPassword = kind === "account" ? accountCurrent : cashierCurrent;
+    const newPassword = kind === "account" ? accountNew : cashierNew;
+    if (newPassword.trim().length < 6) {
+      toast("رمز جدید حداقل ۶ کاراکتر باشد", "error");
+      return;
+    }
+    if (kind === "account") setSavingAccountPass(true);
+    else setSavingCashierPass(true);
+    try {
+      const res = await saFetch<{ cashierPassword?: string }>("sa-cafe-change-password", {
+        method: "POST",
+        body: JSON.stringify({ kind, currentPassword, newPassword: newPassword.trim() }),
+      });
+      toast("رمز با موفقیت تغییر کرد", "success");
+      if (kind === "account") {
+        setAccountCurrent("");
+        setAccountNew("");
+      } else {
+        setCashierCurrent("");
+        setCashierNew("");
+        if (res.cashierPassword) {
+          setAccess((a) => ({ ...a, cashierPassword: res.cashierPassword }));
+        }
+      }
+    } catch (err) {
+      const msg = (err as Error).message;
+      if (msg === "bad_credentials") toast("رمز فعلی اشتباه است", "error");
+      else if (msg === "weak_password") toast("رمز جدید ضعیف است", "error");
+      else toast("تغییر رمز ناموفق بود", "error");
+    } finally {
+      if (kind === "account") setSavingAccountPass(false);
+      else setSavingCashierPass(false);
+    }
+  }
+
   async function sendRequest() {
     if (!planId) {
       toast("یک پلن انتخاب کنید", "error");
@@ -312,8 +367,132 @@ export function CafePortalPage({
 
       <PageHeader
         title={cafe?.name || "حساب من"}
-        description="پلن فعلی، تاریخچه و درخواست خرید / تمدید"
+        description="پلن فعلی، دسترسی منو/پنل، تغییر رمز و درخواست خرید / تمدید"
       />
+
+      {(access.menuUrl || access.adminUrl || access.cashierPassword) ? (
+        <div className="sa-panel" style={{ marginBottom: 16 }}>
+          <div className="sa-panel-head">
+            <h2>دسترسی منو و پنل مدیریت</h2>
+          </div>
+          <div className="sa-panel-body">
+            <div className="sa-detail-grid">
+              {access.menuUrl ? (
+                <div className="sa-detail-item">
+                  <label>آدرس منو</label>
+                  <strong>
+                    <a href={access.menuUrl} target="_blank" rel="noreferrer" dir="ltr" className="sa-link">
+                      {access.menuUrl}
+                    </a>
+                  </strong>
+                </div>
+              ) : null}
+              {access.adminUrl ? (
+                <div className="sa-detail-item">
+                  <label>آدرس پنل مدیریت</label>
+                  <strong>
+                    <a href={access.adminUrl} target="_blank" rel="noreferrer" dir="ltr" className="sa-link">
+                      {access.adminUrl}
+                    </a>
+                  </strong>
+                </div>
+              ) : null}
+              {access.cashierPassword ? (
+                <div className="sa-detail-item">
+                  <label>رمز پنل مدیریت</label>
+                  <strong dir="ltr">{access.cashierPassword}</strong>
+                </div>
+              ) : null}
+              {access.accountEmail ? (
+                <div className="sa-detail-item">
+                  <label>ایمیل حساب اشتراک</label>
+                  <strong dir="ltr">{access.accountEmail}</strong>
+                </div>
+              ) : null}
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      <div className="sa-grid-2" style={{ marginBottom: 16 }}>
+        <div className="sa-panel">
+          <div className="sa-panel-head">
+            <h2>تغییر رمز حساب اشتراک</h2>
+          </div>
+          <div className="sa-panel-body">
+            <p style={{ color: "var(--sa-text-muted)", fontSize: "0.9rem", marginTop: 0 }}>
+              رمز ورود به همین صفحه حساب / خرید پلن
+            </p>
+            <div className="sa-field">
+              <label className="sa-label">رمز فعلی</label>
+              <input
+                className="sa-input"
+                type="password"
+                value={accountCurrent}
+                onChange={(e) => setAccountCurrent(e.target.value)}
+                autoComplete="current-password"
+              />
+            </div>
+            <div className="sa-field">
+              <label className="sa-label">رمز جدید</label>
+              <input
+                className="sa-input"
+                type="password"
+                value={accountNew}
+                onChange={(e) => setAccountNew(e.target.value)}
+                autoComplete="new-password"
+              />
+            </div>
+            <button
+              type="button"
+              className="sa-btn sa-btn-primary"
+              disabled={savingAccountPass || !accountCurrent || !accountNew}
+              onClick={() => changePassword("account")}
+            >
+              {savingAccountPass ? "در حال ذخیره…" : "ذخیره رمز حساب"}
+            </button>
+          </div>
+        </div>
+
+        <div className="sa-panel">
+          <div className="sa-panel-head">
+            <h2>تغییر رمز پنل مدیریت</h2>
+          </div>
+          <div className="sa-panel-body">
+            <p style={{ color: "var(--sa-text-muted)", fontSize: "0.9rem", marginTop: 0 }}>
+              رمز ورود به پنل صندوق / مدیریت روزانه کافه
+            </p>
+            <div className="sa-field">
+              <label className="sa-label">رمز فعلی</label>
+              <input
+                className="sa-input"
+                type="password"
+                value={cashierCurrent}
+                onChange={(e) => setCashierCurrent(e.target.value)}
+                autoComplete="current-password"
+              />
+            </div>
+            <div className="sa-field">
+              <label className="sa-label">رمز جدید</label>
+              <input
+                className="sa-input"
+                type="password"
+                value={cashierNew}
+                onChange={(e) => setCashierNew(e.target.value)}
+                autoComplete="new-password"
+              />
+            </div>
+            <button
+              type="button"
+              className="sa-btn sa-btn-primary"
+              disabled={savingCashierPass || !cashierNew}
+              onClick={() => changePassword("cashier")}
+            >
+              {savingCashierPass ? "در حال ذخیره…" : "ذخیره رمز پنل"}
+            </button>
+          </div>
+        </div>
+      </div>
 
       <div className="sa-grid-2">
         <div className="sa-panel">

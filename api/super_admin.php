@@ -616,6 +616,148 @@ function lumiere_sa_public_cafe_owner($owner) {
     );
 }
 
+function lumiere_sa_public_site_origin() {
+    $env = getenv("MIIZIITO_SITE_URL");
+    if ($env === false || $env === "") $env = getenv("NEXT_PUBLIC_MIIZIITO_SITE_URL");
+    if ($env === false || $env === "") $env = getenv("LUMIERE_SITE_URL");
+    if (is_string($env) && trim($env) !== "") {
+        return rtrim(trim($env), "/");
+    }
+    $https = (!empty($_SERVER["HTTPS"]) && $_SERVER["HTTPS"] !== "off")
+        || (isset($_SERVER["SERVER_PORT"]) && (string) $_SERVER["SERVER_PORT"] === "443")
+        || (isset($_SERVER["HTTP_X_FORWARDED_PROTO"]) && $_SERVER["HTTP_X_FORWARDED_PROTO"] === "https");
+    $host = isset($_SERVER["HTTP_HOST"]) ? trim((string) $_SERVER["HTTP_HOST"]) : "";
+    if ($host !== "") {
+        return ($https ? "https://" : "http://") . $host;
+    }
+    return "https://miiziito.ir";
+}
+
+function lumiere_sa_find_owner_by_tenant($tenantId) {
+    $tenantId = (string) $tenantId;
+    if ($tenantId === "") return null;
+    $owners = lumiere_sa_load_collection("cafe_owners", array());
+    if (!is_array($owners)) return null;
+    foreach ($owners as $o) {
+        if (is_array($o) && isset($o["tenantId"]) && (string) $o["tenantId"] === $tenantId) {
+            return $o;
+        }
+    }
+    return null;
+}
+
+function lumiere_sa_save_owner($owner) {
+    if (!is_array($owner) || empty($owner["id"])) return;
+    $owners = lumiere_sa_load_collection("cafe_owners", array());
+    if (!is_array($owners)) $owners = array();
+    $found = false;
+    foreach ($owners as $i => $o) {
+        if (is_array($o) && isset($o["id"]) && $o["id"] === $owner["id"]) {
+            $owners[$i] = $owner;
+            $found = true;
+            break;
+        }
+    }
+    if (!$found) $owners[] = $owner;
+    lumiere_sa_save_collection("cafe_owners", $owners);
+}
+
+function lumiere_sa_set_owner_password(&$owner, $password) {
+    $owner["passwordHash"] = lumiere_sa_hash_password($password);
+    $owner["passwordPlain"] = (string) $password;
+    $owner["updatedAt"] = lumiere_sa_iso();
+}
+
+/** After payment fulfillment: ticket with menu + admin URLs and access password. */
+function lumiere_sa_send_access_ticket($cafe, $owner = null) {
+    if (!is_array($cafe) || empty($cafe["id"])) return null;
+    if (!$owner) $owner = lumiere_sa_find_owner_by_tenant($cafe["id"]);
+    $slug = isset($cafe["slug"]) ? trim((string) $cafe["slug"]) : "";
+    if ($slug === "") return null;
+
+    $cafes = lumiere_sa_load_collection("cafes", array());
+    if (!is_array($cafes)) $cafes = array();
+    $cafeIdx = -1;
+    foreach ($cafes as $i => $c) {
+        if (is_array($c) && isset($c["id"]) && $c["id"] === $cafe["id"]) {
+            $cafeIdx = $i;
+            $cafe = $c;
+            break;
+        }
+    }
+    $cashierPassword = lumiere_sa_cafe_cashier_password_plain($cafe);
+    if ($cashierPassword === "") {
+        $cashierPassword = lumiere_sa_generate_password();
+        lumiere_sa_cafe_set_cashier_password($cafe, $cashierPassword);
+        if ($cafeIdx >= 0) {
+            $cafes[$cafeIdx] = $cafe;
+            lumiere_sa_save_collection("cafes", $cafes);
+        }
+    }
+
+    $origin = lumiere_sa_public_site_origin();
+    $menuUrl = $origin . "/" . $slug . "/";
+    $adminUrl = $origin . "/" . $slug . "/admin/";
+    $accountUrl = $origin . "/panel-admin/login/";
+    $email = is_array($owner) && isset($owner["email"]) ? (string) $owner["email"] : (isset($cafe["email"]) ? (string) $cafe["email"] : "");
+    $ownerPass = is_array($owner) && !empty($owner["passwordPlain"]) ? (string) $owner["passwordPlain"] : "";
+
+    $lines = array(
+        "اشتراک شما فعال شد. اطلاعات دسترسی کافه:",
+        "",
+        "آدرس منو:",
+        $menuUrl,
+        "",
+        "آدرس پنل مدیریت (صندوق):",
+        $adminUrl,
+        "",
+        "رمز ورود پنل مدیریت:",
+        $cashierPassword,
+        "",
+        "حساب اشتراک (خرید / تمدید / پشتیبانی):",
+        $accountUrl,
+    );
+    if ($email !== "") {
+        $lines[] = "ایمیل ورود: " . $email;
+        if ($ownerPass !== "") {
+            $lines[] = "رمز حساب اشتراک: " . $ownerPass;
+        } else {
+            $lines[] = "رمز حساب اشتراک: همان رمزی که هنگام ثبت‌نام وارد کردید.";
+        }
+    }
+    $lines[] = "";
+    $lines[] = "می‌توانید رمزها را از صفحه حساب اشتراک تغییر دهید.";
+
+    $tickets = lumiere_sa_load_collection("support_tickets", array());
+    if (!is_array($tickets)) $tickets = array();
+    $ticket = array(
+        "id" => lumiere_sa_new_id("tkt"),
+        "tenantId" => $cafe["id"],
+        "cafeName" => isset($cafe["name"]) ? $cafe["name"] : "",
+        "cafeOwnerEmail" => $email,
+        "subject" => "اطلاعات دسترسی — منو و پنل مدیریت",
+        "priority" => "high",
+        "status" => "waiting_customer",
+        "assignedAdminId" => null,
+        "relatedRequestId" => null,
+        "messages" => array(
+            array(
+                "id" => lumiere_sa_new_id("msg"),
+                "from" => "admin",
+                "body" => implode("\n", $lines),
+                "createdAt" => lumiere_sa_iso(),
+            ),
+        ),
+        "createdAt" => lumiere_sa_iso(),
+        "updatedAt" => lumiere_sa_iso(),
+        "lastReplyAt" => lumiere_sa_iso(),
+        "adminReadAt" => lumiere_sa_iso(),
+    );
+    array_unshift($tickets, $ticket);
+    lumiere_sa_save_collection("support_tickets", $tickets);
+    return $ticket;
+}
+
 function lumiere_sa_find_cafe($tenantId) {
     $cafes = lumiere_sa_load_collection("cafes", array());
     if (!is_array($cafes)) return null;
@@ -731,9 +873,14 @@ function lumiere_sa_cafe_portal_payload($owner) {
         );
     }
 
+    $origin = lumiere_sa_public_site_origin();
+    $slug = is_array($cafe) && isset($cafe["slug"]) ? trim((string) $cafe["slug"]) : "";
+    $cashierPassword = is_array($cafe) ? lumiere_sa_cafe_cashier_password_plain($cafe) : "";
+    $cafeOut = is_array($cafe) ? lumiere_sa_cafe_strip_secrets($cafe) : $cafe;
+
     return array(
         "owner" => lumiere_sa_public_cafe_owner($owner),
-        "cafe" => $cafe,
+        "cafe" => $cafeOut,
         "subscription" => $current,
         "plan" => $currentPlan,
         "history" => array_slice($tenantSubs, 0, 20),
@@ -742,6 +889,12 @@ function lumiere_sa_cafe_portal_payload($owner) {
         "paymentInstructions" => isset($settings["paymentInstructions"]) ? (string) $settings["paymentInstructions"] : "",
         "supportPhone" => isset($settings["supportPhone"]) ? (string) $settings["supportPhone"] : "",
         "tickets" => $ticketSummaries,
+        "access" => array(
+            "menuUrl" => $slug !== "" ? ($origin . "/" . $slug . "/") : "",
+            "adminUrl" => $slug !== "" ? ($origin . "/" . $slug . "/admin/") : "",
+            "cashierPassword" => $cashierPassword,
+            "accountEmail" => isset($owner["email"]) ? (string) $owner["email"] : "",
+        ),
     );
 }
 
@@ -1329,6 +1482,7 @@ function lumiere_super_admin_handle($method, $route, $id, $body, $headers) {
             "id" => lumiere_sa_new_id("cown"),
             "email" => $email,
             "passwordHash" => lumiere_sa_hash_password($password),
+            "passwordPlain" => $password,
             "name" => $ownerName !== "" ? $ownerName : $cafeName,
             "phone" => $phone,
             "tenantId" => $cafe["id"],
@@ -1443,6 +1597,63 @@ function lumiere_super_admin_handle($method, $route, $id, $body, $headers) {
         list($owner, $err) = lumiere_sa_require_cafe($headers, $body);
         if ($err) return $err;
         return array("status" => 200, "body" => lumiere_sa_cafe_portal_payload($owner));
+    }
+
+    if ($route === "sa-cafe-change-password" && $method === "POST") {
+        list($owner, $err) = lumiere_sa_require_cafe($headers, $body);
+        if ($err) return $err;
+        $kind = (string) (isset($body["kind"]) ? $body["kind"] : "account");
+        $currentPassword = (string) (isset($body["currentPassword"]) ? $body["currentPassword"] : "");
+        $newPassword = (string) (isset($body["newPassword"]) ? $body["newPassword"] : "");
+        if (strlen($newPassword) < 6) {
+            return array("status" => 400, "body" => array("error" => "weak_password"));
+        }
+
+        if ($kind === "cashier" || $kind === "admin_panel") {
+            $cafe = lumiere_sa_find_cafe((string) (isset($owner["tenantId"]) ? $owner["tenantId"] : ""));
+            if (!$cafe) return array("status" => 404, "body" => array("error" => "cafe_not_found"));
+            $existingPlain = lumiere_sa_cafe_cashier_password_plain($cafe);
+            $hasExisting = $existingPlain !== ""
+                || (function_exists("lumiere_tenant_has_cashier_password") && lumiere_tenant_has_cashier_password($cafe["id"]));
+            if ($hasExisting) {
+                $ok = false;
+                if ($currentPassword !== "" && $existingPlain !== "" && hash_equals($existingPlain, $currentPassword)) {
+                    $ok = true;
+                }
+                if (!$ok && $currentPassword !== "" && function_exists("lumiere_tenant_verify_cashier_password")) {
+                    $ok = lumiere_tenant_verify_cashier_password($cafe["id"], $currentPassword) === true;
+                }
+                if (!$ok) {
+                    return array("status" => 401, "body" => array("error" => "bad_credentials"));
+                }
+            }
+            $cafes = lumiere_sa_load_collection("cafes", array());
+            if (!is_array($cafes)) $cafes = array();
+            foreach ($cafes as $i => $c) {
+                if (is_array($c) && isset($c["id"]) && $c["id"] === $cafe["id"]) {
+                    lumiere_sa_cafe_set_cashier_password($c, $newPassword);
+                    $c["updatedAt"] = lumiere_sa_iso();
+                    $cafes[$i] = $c;
+                    break;
+                }
+            }
+            lumiere_sa_save_collection("cafes", $cafes);
+            return array(
+                "status" => 200,
+                "body" => array("ok" => true, "kind" => "cashier", "cashierPassword" => $newPassword),
+            );
+        }
+
+        // Account (panel-admin login) password
+        if ($currentPassword === "" || !lumiere_sa_verify_password($currentPassword, (string) (isset($owner["passwordHash"]) ? $owner["passwordHash"] : ""))) {
+            return array("status" => 401, "body" => array("error" => "bad_credentials"));
+        }
+        lumiere_sa_set_owner_password($owner, $newPassword);
+        lumiere_sa_save_owner($owner);
+        return array(
+            "status" => 200,
+            "body" => array("ok" => true, "kind" => "account"),
+        );
     }
 
     if ($route === "sa-cafe-support" && $method === "GET") {
@@ -1794,6 +2005,7 @@ function lumiere_super_admin_handle($method, $route, $id, $body, $headers) {
             }
             lumiere_sa_save_collection("subscriptions", $subs);
             $cafes = lumiere_sa_load_collection("cafes", array());
+            $fulfilledCafe = null;
             if (is_array($cafes)) {
                 foreach ($cafes as $i => $c) {
                     if (is_array($c) && isset($c["id"]) && $c["id"] === $tenantId) {
@@ -1801,16 +2013,17 @@ function lumiere_super_admin_handle($method, $route, $id, $body, $headers) {
                         $c["planId"] = $planId;
                         $c["subscriptionId"] = $sub["id"];
                         $c["updatedAt"] = lumiere_sa_iso();
+                        if (empty($c["slug"]) && function_exists("lumiere_tenant_assign_slug")) {
+                            lumiere_tenant_assign_slug($c, $cafes);
+                        }
                         $cafes[$i] = $c;
+                        $fulfilledCafe = $c;
                         break;
                     }
                 }
                 lumiere_sa_save_collection("cafes", $cafes);
-                foreach ($cafes as $c) {
-                    if (is_array($c) && isset($c["id"]) && $c["id"] === $tenantId && lumiere_tenant_is_live($c)) {
-                        lumiere_tenant_provision($c);
-                        break;
-                    }
+                if ($fulfilledCafe && lumiere_tenant_is_live($fulfilledCafe)) {
+                    lumiere_tenant_provision($fulfilledCafe);
                 }
             }
             $req["status"] = "fulfilled";
@@ -1818,6 +2031,12 @@ function lumiere_super_admin_handle($method, $route, $id, $body, $headers) {
             $req["adminNote"] = (string) (isset($body["adminNote"]) ? $body["adminNote"] : (isset($req["adminNote"]) ? $req["adminNote"] : ""));
             $req["subscriptionId"] = $sub["id"];
             $req["updatedAt"] = lumiere_sa_iso();
+            if ($fulfilledCafe) {
+                $accessTicket = lumiere_sa_send_access_ticket($fulfilledCafe);
+                if (is_array($accessTicket) && isset($accessTicket["id"])) {
+                    $req["accessTicketId"] = $accessTicket["id"];
+                }
+            }
             lumiere_sa_audit(
                 $admin,
                 "fulfill_recharge_request",
@@ -1941,11 +2160,18 @@ function lumiere_super_admin_handle($method, $route, $id, $body, $headers) {
                     }
                 }
             }
+            $ownerRow = lumiere_sa_find_owner_by_tenant(isset($cafe["id"]) ? $cafe["id"] : "");
+            $ownerOut = null;
+            if ($ownerRow) {
+                $ownerOut = lumiere_sa_public_cafe_owner($ownerRow);
+                $ownerOut["passwordPlain"] = isset($ownerRow["passwordPlain"]) ? (string) $ownerRow["passwordPlain"] : "";
+            }
             return array(
                 "status" => 200,
                 "body" => array(
                     "cafe" => lumiere_sa_cafe_for_admin($cafe),
                     "subscription" => $sub,
+                    "owner" => $ownerOut,
                     "cashierAuth" => function_exists("lumiere_tenant_cashier_auth_meta")
                         ? lumiere_tenant_cashier_auth_meta($cafe["id"])
                         : array("hasPassword" => false),

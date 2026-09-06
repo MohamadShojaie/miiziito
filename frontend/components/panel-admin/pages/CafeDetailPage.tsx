@@ -56,18 +56,28 @@ export function CafeDetailPage({
   const [impersonating, setImpersonating] = useState(false);
   const [cashierHasPassword, setCashierHasPassword] = useState(false);
   const [cashierPassword, setCashierPassword] = useState("");
+  const [ownerEmail, setOwnerEmail] = useState("");
+  const [ownerPassword, setOwnerPassword] = useState("");
+  const [ownerPassRevealed, setOwnerPassRevealed] = useState(false);
 
   async function load() {
     setLoading(true);
     setError("");
     try {
       const [res, planRes] = await Promise.all([
-        saFetch<{ cafe: Cafe; subscription: Subscription | null; cashierAuth?: { hasPassword: boolean } }>("sa-cafe", { id }),
+        saFetch<{
+          cafe: Cafe;
+          subscription: Subscription | null;
+          cashierAuth?: { hasPassword: boolean };
+          owner?: { email?: string; passwordPlain?: string } | null;
+        }>("sa-cafe", { id }),
         saFetch<{ items: Plan[] }>("sa-plans"),
       ]);
       setCafe(res.cafe);
       setCashierHasPassword(!!(res.cashierAuth?.hasPassword ?? res.cafe.cashierAuth?.hasPassword ?? res.cafe.settings?.hasCashierPassword));
       setCashierPassword(res.cafe.settings?.cashierPassword || "");
+      setOwnerEmail(res.owner?.email || res.cafe.email || "");
+      setOwnerPassword(res.owner?.passwordPlain || "");
       setSub(res.subscription);
       setPlans(planRes.items || []);
     } catch {
@@ -260,6 +270,38 @@ export function CafeDetailPage({
                     if (pwd) setCashierPassword(pwd);
                   }}
                 />
+              </div>
+              <div className="sa-detail-item">
+                <label>ایمیل حساب اشتراک</label>
+                <strong dir="ltr">{ownerEmail || cafe.email || "—"}</strong>
+              </div>
+              <div className="sa-detail-item">
+                <label>رمز حساب اشتراک</label>
+                {ownerPassword ? (
+                  <div className="sa-url-actions">
+                    <strong dir="ltr">{ownerPassRevealed ? ownerPassword : "••••••••"}</strong>
+                    <button
+                      type="button"
+                      className="sa-btn sa-btn-ghost sa-btn-sm"
+                      onClick={() => setOwnerPassRevealed((v) => !v)}
+                    >
+                      {ownerPassRevealed ? "مخفی" : "نمایش"}
+                    </button>
+                    {ownerPassRevealed ? (
+                      <button
+                        type="button"
+                        className="sa-btn sa-btn-ghost sa-btn-sm"
+                        onClick={() => navigator.clipboard.writeText(ownerPassword).then(() => toast("کپی شد", "success")).catch(() => {})}
+                      >
+                        کپی
+                      </button>
+                    ) : null}
+                  </div>
+                ) : (
+                  <strong style={{ color: "var(--sa-text-muted)", fontWeight: 500 }}>
+                    هنوز ذخیره نشده (پس از تغییر رمز توسط کاربر نمایش داده می‌شود)
+                  </strong>
+                )}
               </div>
               <div className="sa-detail-item">
                 <label>شناسه کافه</label>
