@@ -1,10 +1,13 @@
 "use client";
 
 import { BrandMark } from "@/components/panel-admin/BrandMark";
+import { AccessCredentialsCard } from "@/components/panel-admin/AccessCredentialsCard";
 
 import { useEffect, useMemo, useState } from "react";
+import { resolveAccessPayload } from "@/lib/super-admin/access-message";
+import { PANEL_GUIDE_PATH } from "@/lib/super-admin/access-message";
 import { saFetch } from "@/lib/super-admin/api";
-import { formatDate, formatMoney } from "@/lib/super-admin/format";
+import { formatDate, formatDateTime, formatMoney } from "@/lib/super-admin/format";
 import { cafeCashierUrl, cafeMenuUrl } from "@/lib/super-admin/tenant-urls";
 import type { Cafe, Plan, Subscription, SupportTicket } from "@/lib/super-admin/types";
 import { toast } from "../ui/Toast";
@@ -377,6 +380,9 @@ export function CafePortalPage({
         <div className="sa-panel" style={{ marginBottom: 16 }}>
           <div className="sa-panel-head">
             <h2>دسترسی منو و پنل مدیریت</h2>
+            <a className="sa-btn sa-btn-ghost sa-btn-sm" href={PANEL_GUIDE_PATH} download target="_blank" rel="noreferrer">
+              دانلود راهنما
+            </a>
           </div>
           <div className="sa-panel-body">
             <div className="sa-detail-grid">
@@ -413,6 +419,13 @@ export function CafePortalPage({
                 </div>
               ) : null}
             </div>
+            <p style={{ marginTop: 14, marginBottom: 0, color: "var(--sa-text-muted)", fontSize: "0.9rem" }}>
+              برای آموزش گام‌به‌گام منو، صندوق و میزها،{" "}
+              <a className="sa-link" href={PANEL_GUIDE_PATH} target="_blank" rel="noreferrer">
+                راهنمای کار با پنل
+              </a>{" "}
+              را دانلود یا مشاهده کنید.
+            </p>
           </div>
         </div>
       ) : null}
@@ -722,7 +735,7 @@ export function CafePortalPage({
                       <td data-label="وضعیت">
                         <Badge status={t.status} />
                       </td>
-                      <td data-label="تاریخ">{formatDate(t.createdAt)}</td>
+                      <td data-label="تاریخ">{formatDateTime(t.createdAt)}</td>
                     </tr>
                   ))}
                 </tbody>
@@ -741,14 +754,21 @@ export function CafePortalPage({
                       <strong>{selectedTicket.subject}</strong>
                       <Badge status={selectedTicket.status} />
                     </div>
-                    {(selectedTicket.messages || []).map((m) => (
-                      <div key={m.id} style={{ padding: "10px 0", borderBottom: "1px solid var(--sa-border)" }}>
-                        <div style={{ fontSize: "0.75rem", color: "var(--sa-text-faint)" }}>
-                          {MSG_FROM_FA[m.from] || m.from} · {formatDate(m.createdAt)}
+                    {[...(selectedTicket.messages || [])].reverse().map((m) => {
+                      const accessPayload = resolveAccessPayload(m, selectedTicket.subject);
+                      return (
+                        <div key={m.id} className="sa-ticket-message">
+                          <div className="sa-ticket-message-meta">
+                            {MSG_FROM_FA[m.from] || m.from} · {formatDateTime(m.createdAt)}
+                          </div>
+                          {accessPayload ? (
+                            <AccessCredentialsCard payload={accessPayload} />
+                          ) : (
+                            <div className="sa-ticket-message-body">{m.body}</div>
+                          )}
                         </div>
-                        <div style={{ marginTop: 4 }}>{m.body}</div>
-                      </div>
-                    ))}
+                      );
+                    })}
                     {selectedTicket.status !== "closed" && selectedTicket.status !== "resolved" ? (
                       <>
                         <div className="sa-field" style={{ marginTop: 12 }}>

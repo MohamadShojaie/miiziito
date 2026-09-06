@@ -1,7 +1,9 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { AccessCredentialsCard } from "@/components/panel-admin/AccessCredentialsCard";
 import { saFetch } from "@/lib/super-admin/api";
+import { resolveAccessPayload } from "@/lib/super-admin/access-message";
 import { formatDate, formatDateTime, formatMoney } from "@/lib/super-admin/format";
 import type {
   AdminUser,
@@ -912,14 +914,21 @@ export function SupportDetailPage({ id, onNavigate }: { id: string; onNavigate: 
                   {ticket.lastActivityAt ? ` · آخرین پیام: ${formatDateTime(ticket.lastActivityAt)}` : ""}
                 </span>
               </div>
-              {messagesNewestFirst.map((m) => (
-                <div key={m.id} className="sa-ticket-message">
-                  <div className="sa-ticket-message-meta">
-                    {MSG_FROM_FA[m.from] || m.from} · {formatDateTime(m.createdAt)}
+              {messagesNewestFirst.map((m) => {
+                const accessPayload = resolveAccessPayload(m, ticket.subject);
+                return (
+                  <div key={m.id} className="sa-ticket-message">
+                    <div className="sa-ticket-message-meta">
+                      {MSG_FROM_FA[m.from] || m.from} · {formatDateTime(m.createdAt)}
+                    </div>
+                    {accessPayload ? (
+                      <AccessCredentialsCard payload={accessPayload} />
+                    ) : (
+                      <div className="sa-ticket-message-body">{m.body}</div>
+                    )}
                   </div>
-                  <div className="sa-ticket-message-body">{m.body}</div>
-                </div>
-              ))}
+                );
+              })}
               <div className="sa-field" style={{ marginTop: 16 }}>
                 <textarea
                   className="sa-textarea"

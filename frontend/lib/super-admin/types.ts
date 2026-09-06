@@ -124,7 +124,13 @@ export type SupportTicket = {
   lastMessageFrom?: string | null;
   attentionRank?: number;
   adminReadAt?: string | null;
-  messages?: { id: string; from: string; body: string; createdAt: string }[];
+  messages?: {
+    id: string;
+    from: string;
+    body: string;
+    createdAt: string;
+    payload?: Record<string, unknown>;
+  }[];
   createdAt: string;
   updatedAt: string;
   lastReplyAt?: string | null;

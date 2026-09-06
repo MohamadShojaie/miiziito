@@ -735,11 +735,31 @@ def _send_access_ticket(cafe: dict, owner: dict | None = None) -> dict | None:
     menu_url = f"{origin}/{slug}/"
     admin_url = f"{origin}/{slug}/admin/"
     account_url = f"{origin}/panel-admin/login/"
+    guide_url = f"{origin}/guides/miiziito-panel-guide.html"
     email = str((owner or {}).get("email") or cafe.get("email") or "")
     owner_pass = str((owner or {}).get("passwordPlain") or "")
+    account_password = ""
+    account_password_note = ""
+    if email:
+        if owner_pass:
+            account_password = owner_pass
+        else:
+            account_password_note = "همان رمزی که هنگام ثبت‌نام وارد کردید."
+
+    payload = {
+        "type": "access_credentials",
+        "menuUrl": menu_url,
+        "adminUrl": admin_url,
+        "cashierPassword": cashier_password,
+        "accountUrl": account_url,
+        "accountEmail": email,
+        "accountPassword": account_password,
+        "accountPasswordNote": account_password_note,
+        "guideUrl": guide_url,
+    }
 
     lines = [
-        "اشتراک شما فعال شد. اطلاعات دسترسی کافه:",
+        "اشتراک شما فعال شد. اطلاعات دسترسی کافه در همین تیکت به‌صورت کارت نمایش داده می‌شود.",
         "",
         "آدرس منو:",
         menu_url,
@@ -755,11 +775,11 @@ def _send_access_ticket(cafe: dict, owner: dict | None = None) -> dict | None:
     ]
     if email:
         lines.append(f"ایمیل ورود: {email}")
-        if owner_pass:
-            lines.append(f"رمز حساب اشتراک: {owner_pass}")
+        if account_password:
+            lines.append(f"رمز حساب اشتراک: {account_password}")
         else:
-            lines.append("رمز حساب اشتراک: همان رمزی که هنگام ثبت‌نام وارد کردید.")
-    lines.extend(["", "می‌توانید رمزها را از صفحه حساب اشتراک تغییر دهید."])
+            lines.append(f"رمز حساب اشتراک: {account_password_note}")
+    lines.extend(["", "راهنمای کار با پنل:", guide_url, "", "می‌توانید رمزها را از صفحه حساب اشتراک تغییر دهید."])
 
     tickets = load_collection("support_tickets", [])
     if not isinstance(tickets, list):
@@ -780,6 +800,7 @@ def _send_access_ticket(cafe: dict, owner: dict | None = None) -> dict | None:
                 "id": _new_id("msg"),
                 "from": "admin",
                 "body": "\n".join(lines),
+                "payload": payload,
                 "createdAt": _iso(),
             }
         ],

@@ -769,8 +769,31 @@ function lumiere_sa_send_access_ticket($cafe, $owner = null) {
     $email = is_array($owner) && isset($owner["email"]) ? (string) $owner["email"] : (isset($cafe["email"]) ? (string) $cafe["email"] : "");
     $ownerPass = is_array($owner) && !empty($owner["passwordPlain"]) ? (string) $owner["passwordPlain"] : "";
 
+    $guideUrl = $origin . "/guides/miiziito-panel-guide.html";
+    $accountPasswordNote = "";
+    $accountPassword = "";
+    if ($email !== "") {
+        if ($ownerPass !== "") {
+            $accountPassword = $ownerPass;
+        } else {
+            $accountPasswordNote = "همان رمزی که هنگام ثبت‌نام وارد کردید.";
+        }
+    }
+
+    $payload = array(
+        "type" => "access_credentials",
+        "menuUrl" => $menuUrl,
+        "adminUrl" => $adminUrl,
+        "cashierPassword" => $cashierPassword,
+        "accountUrl" => $accountUrl,
+        "accountEmail" => $email,
+        "accountPassword" => $accountPassword,
+        "accountPasswordNote" => $accountPasswordNote,
+        "guideUrl" => $guideUrl,
+    );
+
     $lines = array(
-        "اشتراک شما فعال شد. اطلاعات دسترسی کافه:",
+        "اشتراک شما فعال شد. اطلاعات دسترسی کافه در همین تیکت به‌صورت کارت نمایش داده می‌شود.",
         "",
         "آدرس منو:",
         $menuUrl,
@@ -786,12 +809,15 @@ function lumiere_sa_send_access_ticket($cafe, $owner = null) {
     );
     if ($email !== "") {
         $lines[] = "ایمیل ورود: " . $email;
-        if ($ownerPass !== "") {
-            $lines[] = "رمز حساب اشتراک: " . $ownerPass;
+        if ($accountPassword !== "") {
+            $lines[] = "رمز حساب اشتراک: " . $accountPassword;
         } else {
-            $lines[] = "رمز حساب اشتراک: همان رمزی که هنگام ثبت‌نام وارد کردید.";
+            $lines[] = "رمز حساب اشتراک: " . $accountPasswordNote;
         }
     }
+    $lines[] = "";
+    $lines[] = "راهنمای کار با پنل:";
+    $lines[] = $guideUrl;
     $lines[] = "";
     $lines[] = "می‌توانید رمزها را از صفحه حساب اشتراک تغییر دهید.";
 
@@ -815,6 +841,7 @@ function lumiere_sa_send_access_ticket($cafe, $owner = null) {
                 "id" => lumiere_sa_new_id("msg"),
                 "from" => "admin",
                 "body" => implode("\n", $lines),
+                "payload" => $payload,
                 "createdAt" => lumiere_sa_iso(),
             ),
         ),
