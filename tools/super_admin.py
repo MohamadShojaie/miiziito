@@ -589,11 +589,45 @@ def _public_cafe_owner(owner: dict) -> dict:
     }
 
 
+_request_headers: dict = {}
+
+
 def _public_site_origin() -> str:
     for key in ("MIIZIITO_SITE_URL", "NEXT_PUBLIC_MIIZIITO_SITE_URL", "LUMIERE_SITE_URL"):
         val = (os.environ.get(key) or "").strip()
         if val:
             return val.rstrip("/")
+    headers = _request_headers if isinstance(_request_headers, dict) else {}
+    origin = str(headers.get("Origin") or headers.get("origin") or "").strip().rstrip("/")
+    if origin.startswith("http://") or origin.startswith("https://"):
+        return origin
+    referer = str(headers.get("Referer") or headers.get("referer") or "").strip()
+    if referer.startswith("http://") or referer.startswith("https://"):
+        # http://127.0.0.1:3000/panel-admin/account/ → http://127.0.0.1:3000
+        try:
+            from urllib.parse import urlsplit
+
+            parts = urlsplit(referer)
+            if parts.scheme and parts.netloc:
+                return f"{parts.scheme}://{parts.netloc}"
+        except Exception:
+            pass
+    host = str(
+        headers.get("X-Forwarded-Host")
+        or headers.get("x-forwarded-host")
+        or headers.get("Host")
+        or headers.get("host")
+        or ""
+    ).strip().split(",")[0].strip()
+    if host and "8787" not in host and not host.startswith("127.0.0.1:87"):
+        proto = str(
+            headers.get("X-Forwarded-Proto")
+            or headers.get("x-forwarded-proto")
+            or ("https" if host.endswith(":443") else "http")
+        ).split(",")[0].strip()
+        if proto not in ("http", "https"):
+            proto = "http"
+        return f"{proto}://{host}"
     return "https://miiziito.ir"
 
 
@@ -1088,6 +1122,9 @@ def handle(
     """Return {status, body} or None if route is not a super-admin route."""
     if not route.startswith("sa-"):
         return None
+
+    global _request_headers
+    _request_headers = headers if isinstance(headers, dict) else {}
 
     ensure_platform()
     ip = _client_ip(headers)

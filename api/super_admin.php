@@ -623,11 +623,26 @@ function lumiere_sa_public_site_origin() {
     if (is_string($env) && trim($env) !== "") {
         return rtrim(trim($env), "/");
     }
+    $originHdr = isset($_SERVER["HTTP_ORIGIN"]) ? trim((string) $_SERVER["HTTP_ORIGIN"]) : "";
+    if ($originHdr !== "" && preg_match('#^https?://#i', $originHdr)) {
+        return rtrim($originHdr, "/");
+    }
+    $referer = isset($_SERVER["HTTP_REFERER"]) ? trim((string) $_SERVER["HTTP_REFERER"]) : "";
+    if ($referer !== "" && preg_match('#^(https?://[^/]+)#i', $referer, $m)) {
+        return rtrim($m[1], "/");
+    }
     $https = (!empty($_SERVER["HTTPS"]) && $_SERVER["HTTPS"] !== "off")
         || (isset($_SERVER["SERVER_PORT"]) && (string) $_SERVER["SERVER_PORT"] === "443")
         || (isset($_SERVER["HTTP_X_FORWARDED_PROTO"]) && $_SERVER["HTTP_X_FORWARDED_PROTO"] === "https");
-    $host = isset($_SERVER["HTTP_HOST"]) ? trim((string) $_SERVER["HTTP_HOST"]) : "";
-    if ($host !== "") {
+    $host = "";
+    if (!empty($_SERVER["HTTP_X_FORWARDED_HOST"])) {
+        $host = trim(explode(",", (string) $_SERVER["HTTP_X_FORWARDED_HOST"])[0]);
+    }
+    if ($host === "" && isset($_SERVER["HTTP_HOST"])) {
+        $host = trim((string) $_SERVER["HTTP_HOST"]);
+    }
+    // Local API often listens on :8787 while the site is on :3000 — don't advertise the API host.
+    if ($host !== "" && strpos($host, "8787") === false) {
         return ($https ? "https://" : "http://") . $host;
     }
     return "https://miiziito.ir";

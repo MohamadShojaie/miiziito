@@ -19,7 +19,9 @@ export function CafeMenuPage() {
   const [waiterOpen, setWaiterOpen] = useState(false);
   const [reserveOpen, setReserveOpen] = useState(false);
   const [lockedTable, setLockedTable] = useState("");
-  const [slug, setSlug] = useState("");
+  const [slug, setSlug] = useState(() =>
+    typeof window !== "undefined" ? tenantSlugFromPath() : ""
+  );
 
   useEffect(() => {
     const s = tenantSlugFromPath();

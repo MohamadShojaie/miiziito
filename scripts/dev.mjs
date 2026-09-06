@@ -40,7 +40,15 @@ function loadEnvFile() {
 function run(cmd, args, opts = {}) {
   const child = spawn(cmd, args, {
     cwd: opts.cwd || root,
-    env: { ...process.env, MIIZIITO_API_PORT: apiPort },
+    env: {
+      ...process.env,
+      MIIZIITO_API_PORT: apiPort,
+      // Menu / admin links in portal + tickets must hit Next, not the API port.
+      MIIZIITO_SITE_URL:
+        process.env.MIIZIITO_SITE_URL ||
+        process.env.NEXT_PUBLIC_MIIZIITO_SITE_URL ||
+        "http://127.0.0.1:3000",
+    },
     stdio: opts.stdio || "inherit",
     shell: false,
   });

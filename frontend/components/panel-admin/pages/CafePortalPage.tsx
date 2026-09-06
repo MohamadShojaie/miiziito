@@ -5,6 +5,7 @@ import { BrandMark } from "@/components/panel-admin/BrandMark";
 import { useEffect, useMemo, useState } from "react";
 import { saFetch } from "@/lib/super-admin/api";
 import { formatDate, formatMoney } from "@/lib/super-admin/format";
+import { cafeCashierUrl, cafeMenuUrl } from "@/lib/super-admin/tenant-urls";
 import type { Cafe, Plan, Subscription, SupportTicket } from "@/lib/super-admin/types";
 import { toast } from "../ui/Toast";
 import { Badge, ErrorBox, PageHeader, SkeletonTable } from "../ui/primitives";
@@ -190,6 +191,8 @@ export function CafePortalPage({
       ) || null,
     [requests]
   );
+  const menuUrl = cafe?.slug ? cafeMenuUrl(cafe.slug) : access.menuUrl || "";
+  const adminUrl = cafe?.slug ? cafeCashierUrl(cafe.slug) : access.adminUrl || "";
 
   async function confirmPayment() {
     if (!activeRequest) return;
@@ -370,29 +373,29 @@ export function CafePortalPage({
         description="پلن فعلی، دسترسی منو/پنل، تغییر رمز و درخواست خرید / تمدید"
       />
 
-      {(access.menuUrl || access.adminUrl || access.cashierPassword) ? (
+      {(menuUrl || adminUrl || access.cashierPassword) ? (
         <div className="sa-panel" style={{ marginBottom: 16 }}>
           <div className="sa-panel-head">
             <h2>دسترسی منو و پنل مدیریت</h2>
           </div>
           <div className="sa-panel-body">
             <div className="sa-detail-grid">
-              {access.menuUrl ? (
+              {menuUrl ? (
                 <div className="sa-detail-item">
                   <label>آدرس منو</label>
                   <strong>
-                    <a href={access.menuUrl} target="_blank" rel="noreferrer" dir="ltr" className="sa-link">
-                      {access.menuUrl}
+                    <a href={menuUrl} target="_blank" rel="noreferrer" dir="ltr" className="sa-link">
+                      {menuUrl}
                     </a>
                   </strong>
                 </div>
               ) : null}
-              {access.adminUrl ? (
+              {adminUrl ? (
                 <div className="sa-detail-item">
                   <label>آدرس پنل مدیریت</label>
                   <strong>
-                    <a href={access.adminUrl} target="_blank" rel="noreferrer" dir="ltr" className="sa-link">
-                      {access.adminUrl}
+                    <a href={adminUrl} target="_blank" rel="noreferrer" dir="ltr" className="sa-link">
+                      {adminUrl}
                     </a>
                   </strong>
                 </div>
