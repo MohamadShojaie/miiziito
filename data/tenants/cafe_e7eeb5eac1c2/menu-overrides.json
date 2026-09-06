@@ -1,0 +1,38 @@
+{
+  "_standalone": true,
+  "_added": {
+    "cat-1000-custom-25f9b130e7": {
+      "categoryIndex": 1000,
+      "name": "آب",
+      "description": "",
+      "price": 20000.0,
+      "soldOut": false,
+      "toppings": [],
+      "isNew": true,
+      "createdAt": 1788346177112,
+      "newAt": 1788346177112
+    },
+    "cat-1000-custom-9a200bfe3d": {
+      "categoryIndex": 1000,
+      "name": "بهاد نارنج",
+      "description": "",
+      "price": 197000.0,
+      "soldOut": false,
+      "toppings": [],
+      "isNew": true,
+      "createdAt": 1788346208991,
+      "newAt": 1788346208991
+    }
+  },
+  "_addedCategories": {
+    "1000": {
+      "name": "نوشیدنی",
+      "hidden": false,
+      "icon": "assets/category/ice-drinke.png"
+    }
+  },
+  "_categories": {},
+  "_categoryOrder": [
+    1000
+  ]
+}

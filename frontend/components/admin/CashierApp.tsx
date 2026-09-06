@@ -8,13 +8,14 @@ import {
   isAlertMuted,
   isDevMode,
   setAlertMuted,
-  setCashierRole,
   setCashierToken,
 } from "@/lib/api";
-import { DEFAULT_CAFE_NAME_EN } from "@/lib/brand";
+import { DEFAULT_CAFE_NAME_FA } from "@/lib/brand";
+import { setMenuTenantSlug } from "@/lib/tenant";
 import type { Order, TablesPayload } from "@/lib/types";
 import { useOrdersLive } from "@/hooks/useOrdersLive";
 import { useToast } from "@/components/ToastProvider";
+import { CashierLoginModal } from "@/components/admin/CashierLoginModal";
 import { OrdersTab } from "@/components/admin/OrdersTab";
 import { InvoicesTab } from "@/components/admin/InvoicesTab";
 import { TablesTab } from "@/components/admin/TablesTab";
@@ -78,13 +79,11 @@ const TAB_TITLES: Record<Tab, string> = {
   settings: "تنظیمات",
 };
 
-export function CashierApp() {
-  const [brandName, setBrandName] = useState(DEFAULT_CAFE_NAME_EN);
+export function CashierApp({ tenantSlug = "" }: { tenantSlug?: string }) {
+  const [brandName, setBrandName] = useState(DEFAULT_CAFE_NAME_FA);
   const { showToast } = useToast();
   const [token, setToken] = useState("");
-  const [password, setPassword] = useState("");
-  const [loginError, setLoginError] = useState(false);
-  const [loginBusy, setLoginBusy] = useState(false);
+  const [authReady, setAuthReady] = useState(false);
   const [tab, setTab] = useState<Tab>("orders");
   const [muted, setMuted] = useState(false);
   const [composeOpen, setComposeOpen] = useState(false);
@@ -95,18 +94,39 @@ export function CashierApp() {
   const [focusCustomerId, setFocusCustomerId] = useState<string | null>(null);
 
   useEffect(() => {
-    setToken(getCashierToken());
-    setMuted(isAlertMuted());
-  }, []);
+    if (tenantSlug) setMenuTenantSlug(tenantSlug);
+  }, [tenantSlug]);
 
   useEffect(() => {
+    setMuted(isAlertMuted());
+    const stored = getCashierToken(tenantSlug);
+    if (!stored) {
+      setToken("");
+      setAuthReady(true);
+      return;
+    }
     apiJson<{ settings?: { restaurantNameEn?: string } }>("/api/settings")
+      .then(() => setToken(stored))
+      .catch(() => {
+        setCashierToken("", tenantSlug);
+        setToken("");
+      })
+      .finally(() => setAuthReady(true));
+  }, [tenantSlug]);
+
+  useEffect(() => {
+    if (!token) return;
+    apiJson<{
+      settings?: { restaurantNameFa?: string; restaurantNameEn?: string };
+    }>("/api/settings")
       .then((data) => {
-        const name = data.settings?.restaurantNameEn?.trim();
+        const name =
+          data.settings?.restaurantNameFa?.trim() ||
+          data.settings?.restaurantNameEn?.trim();
         if (name) setBrandName(name);
       })
       .catch(() => {});
-  }, []);
+  }, [token]);
 
   const live = useOrdersLive(!!token);
 
@@ -117,88 +137,32 @@ export function CashierApp() {
     [live]
   );
 
-  async function login(e: React.FormEvent) {
-    e.preventDefault();
-    setLoginError(false);
-    setLoginBusy(true);
-    try {
-      const data = await apiJson<{
-        token?: string;
-        role?: string;
-        sandbox?: string;
-      }>("/api/login", {
-        method: "POST",
-        auth: false,
-        body: JSON.stringify({ password: password.trim() }),
-      });
-      if (!data.token) throw new Error("login");
-      setCashierToken(data.token);
-      setCashierRole(
-        data.role === "dev" ? "dev" : "cashier",
-        data.sandbox || "dev"
-      );
-      setToken(data.token);
-      setPassword("");
-    } catch {
-      setLoginError(true);
-    } finally {
-      setLoginBusy(false);
-    }
-  }
-
   function logout() {
     apiJson("/api/logout", {
       method: "POST",
       body: JSON.stringify({ token }),
     }).catch(() => {});
-    setCashierToken("");
+    setCashierToken("", tenantSlug);
     setToken("");
+  }
+
+  if (!authReady) {
+    return null;
   }
 
   if (!token) {
     return (
-      <div className="modal-overlay cp-modal-overlay is-open">
-        <div className="modal-card cp-modal" role="dialog">
-          <Link href="/" className="modal-close" aria-label="بستن">
-            ×
-          </Link>
-          <h2 className="modal-title">ورود صندوقدار</h2>
-          <p className="modal-hint">رمز عبور را وارد کنید</p>
-          <form className="cashier-login-form" onSubmit={login}>
-            <label className="sr-only" htmlFor="cashier-password">
-              رمز عبور
-            </label>
-            <input
-              type="password"
-              id="cashier-password"
-              className="modal-input"
-              placeholder="رمز عبور"
-              autoComplete="current-password"
-              required
-              value={password}
-              disabled={loginBusy}
-              onChange={(e) => setPassword(e.target.value)}
-              autoFocus
-            />
-            <p className="modal-error" hidden={!loginError}>
-              رمز اشتباه است
-            </p>
-            <button
-              type="submit"
-              className={`modal-submit cp-btn cp-btn--primary cp-btn--block${loginBusy ? " is-loading" : ""}`}
-              disabled={loginBusy}
-            >
-              ورود به پنل
-            </button>
-          </form>
-        </div>
-      </div>
+      <CashierLoginModal
+        tenantSlug={tenantSlug}
+        closeHref={tenantSlug ? `/${tenantSlug}/` : "/"}
+        onSuccess={() => setToken(getCashierToken(tenantSlug))}
+      />
     );
   }
 
   return (
     <div
-      className={`cashier-panel-overlay is-open${isDevMode() ? " is-dev" : ""}`}
+      className={`cashier-panel-overlay is-open${isDevMode(tenantSlug) ? " is-dev" : ""}`}
     >
       <div
         className={`cashier-panel cp-app${sidebarCollapsed ? " is-sidebar-collapsed" : ""}`}
@@ -228,7 +192,7 @@ export function CashierApp() {
                   <span className="sync-status-text">{live.syncLabel}</span>
                 </span>
               </div>
-              {isDevMode() ? (
+              {isDevMode(tenantSlug) && !tenantSlug ? (
                 <span className="dev-mode-banner">
                   حالت آزمایشی — این داده‌ها به کافه نمی‌رسد
                 </span>

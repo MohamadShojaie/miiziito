@@ -7,7 +7,7 @@ import {
   apiJson,
   loadQueue,
   saveQueue,
-  sandboxHeaders,
+  menuHeaders,
 } from "@/lib/api";
 import { formatPriceAsNumber, toPersianDigits } from "@/lib/format";
 import { startOfDayMs, toIsoDate } from "@/lib/jalali";
@@ -34,7 +34,7 @@ function useSelectableTables(
         const data = await apiJson<TablesPayload>("/api/tables", {
           method: "GET",
           auth: false,
-          sandbox: true,
+          headers: menuHeaders(),
         });
         if (cancelled) return;
         if (data.regions?.length) setRegions(data.regions);
@@ -326,8 +326,7 @@ export function CartDrawer({
       await apiJson("/api/orders", {
         method: "POST",
         auth: false,
-        sandbox: true,
-        headers: { "Content-Type": "application/json", ...sandboxHeaders() },
+        headers: { "Content-Type": "application/json", ...menuHeaders() },
         body: JSON.stringify(payload),
       });
       clear();
@@ -368,8 +367,7 @@ export function CartDrawer({
       await apiJson("/api/orders", {
         method: "POST",
         auth: false,
-        sandbox: true,
-        headers: { "Content-Type": "application/json", ...sandboxHeaders() },
+        headers: { "Content-Type": "application/json", ...menuHeaders() },
         body: JSON.stringify({ type: "waiter", table: t }),
       });
       showToast("گارسون صدا زده شد");
@@ -580,8 +578,7 @@ export function WaiterModal({
       await apiJson("/api/orders", {
         method: "POST",
         auth: false,
-        sandbox: true,
-        headers: { "Content-Type": "application/json", ...sandboxHeaders() },
+        headers: { "Content-Type": "application/json", ...menuHeaders() },
         body: JSON.stringify({ type: "waiter", table: t }),
       });
       showToast("گارسون صدا زده شد");
@@ -776,8 +773,7 @@ export function ReserveModal({
       await apiJson("/api/reservations", {
         method: "POST",
         auth: false,
-        sandbox: true,
-        headers: { "Content-Type": "application/json", ...sandboxHeaders() },
+        headers: { "Content-Type": "application/json", ...menuHeaders() },
         body: JSON.stringify(body),
       });
       showToast("درخواست رزرو ارسال شد");

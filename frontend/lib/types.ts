@@ -227,8 +227,7 @@ export const DEFAULT_TABLE_REGIONS: TableRegion[] = [
 export function tablesFromRegions(
   regions?: TableRegion[] | null
 ): number[] {
-  const source =
-    regions && regions.length ? regions : DEFAULT_TABLE_REGIONS;
+  const source = regions && regions.length ? regions : [];
   const seen = new Set<number>();
   const out: number[] = [];
   for (const region of source) {

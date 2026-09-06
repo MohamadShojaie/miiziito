@@ -1,4 +1,5 @@
 import type { MenuCategory, MenuItem } from "./types";
+import { getMenuTenantSlug } from "./tenant";
 import { MENU_DATA } from "./menu-data";
 
 export const NEW_ITEM_MS = 14 * 24 * 60 * 60 * 1000;
@@ -32,6 +33,8 @@ export type MenuOverrides = Record<string, unknown> & {
     }
   >;
   _categoryOrder?: Array<number | string>;
+  /** Tenant cafes: do not merge with built-in demo menu. */
+  _standalone?: boolean;
 };
 
 export type ItemOverride = Partial<MenuItem> & {
@@ -313,11 +316,38 @@ export function builtInItemId(ci: number, ii: number): string {
   return `cat-${ci}-item-${ii}`;
 }
 
+/** Legacy patch keys (cat-0-item-0) or tenant-owned menu entries. */
+function hasMenuContent(overrides?: MenuOverrides | null): boolean {
+  if (!overrides) return false;
+  if (overrides._addedCategories && Object.keys(overrides._addedCategories).length)
+    return true;
+  if (overrides._added && Object.keys(overrides._added).length) return true;
+  return Object.keys(overrides).some(
+    (k) => /^cat-\d+-item-\d+$/.test(k) || /^cat-\d+$/.test(k)
+  );
+}
+
+export function isTenantMenuMode(
+  overrides?: MenuOverrides | null,
+  standalone?: boolean
+): boolean {
+  if (standalone === true) return true;
+  if (standalone === false) return false;
+  if (overrides?._standalone === true) return true;
+  if (overrides?._standalone === false) return false;
+  if (!getMenuTenantSlug()) return false;
+  return !hasMenuContent(overrides);
+}
+
 export function buildCustomerCategories(
-  overrides?: MenuOverrides | null
+  overrides?: MenuOverrides | null,
+  options?: { standalone?: boolean }
 ): CustomerCategory[] {
-  const base = ((MENU_DATA as { categories: MenuCategory[] }).categories ||
-    []) as MenuCategory[];
+  const standalone = isTenantMenuMode(overrides, options?.standalone);
+  const base = standalone
+    ? []
+    : (((MENU_DATA as { categories: MenuCategory[] }).categories ||
+        []) as MenuCategory[]);
   const list: CustomerCategory[] = [];
 
   base.forEach((cat, ci) => {

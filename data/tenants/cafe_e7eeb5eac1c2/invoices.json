@@ -1,0 +1,92 @@
+[
+  {
+    "id": "inv-1788346592980-8830",
+    "number": 1002,
+    "orderId": "3dbffbeb6fa8a764",
+    "table": "3",
+    "createdAt": 1788346592980,
+    "updatedAt": 1788346592980,
+    "cashier": "local",
+    "customerName": "محمد شجاعی",
+    "customerPhone": "۰۹۱۳۱۴۳۵۵۲۶",
+    "couponCode": "",
+    "items": [
+      {
+        "name": "آب",
+        "price": 20000,
+        "count": 2,
+        "line": 40000
+      }
+    ],
+    "subtotal": 40000,
+    "discountType": "",
+    "discountValue": 0.0,
+    "discountAmount": 0,
+    "tax": 3600,
+    "total": 43600,
+    "payments": [
+      {
+        "method": "cash",
+        "amount": 43600
+      }
+    ],
+    "payMethod": "cash",
+    "status": "paid",
+    "history": [
+      {
+        "at": 1788346592980,
+        "action": "paid"
+      }
+    ],
+    "refunds": [],
+    "customerId": "cust_411968b3ef347851"
+  },
+  {
+    "id": "inv-1788346541213-7953",
+    "number": 1001,
+    "orderId": "cfe2d0f301f40cb1",
+    "table": "6",
+    "createdAt": 1788346541213,
+    "updatedAt": 1788346541213,
+    "cashier": "local",
+    "customerName": "محمد شجاعی",
+    "customerPhone": "۰۹۱۳۱۴۳۵۵۲۶",
+    "couponCode": "",
+    "items": [
+      {
+        "name": "آب",
+        "price": 20000,
+        "count": 1,
+        "line": 20000
+      },
+      {
+        "name": "بهاد نارنج",
+        "price": 197000,
+        "count": 1,
+        "line": 197000
+      }
+    ],
+    "subtotal": 217000,
+    "discountType": "",
+    "discountValue": 0.0,
+    "discountAmount": 0,
+    "tax": 19530,
+    "total": 236530,
+    "payments": [
+      {
+        "method": "cash",
+        "amount": 236530
+      }
+    ],
+    "payMethod": "cash",
+    "status": "paid",
+    "history": [
+      {
+        "at": 1788346541213,
+        "action": "paid"
+      }
+    ],
+    "refunds": [],
+    "customerId": "cust_411968b3ef347851"
+  }
+]

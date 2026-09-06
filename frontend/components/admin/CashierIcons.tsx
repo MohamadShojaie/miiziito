@@ -221,6 +221,95 @@ export function IconPayments(props: IconProps) {
   );
 }
 
+export function IconCheck(props: IconProps) {
+  return (
+    <Svg {...props}>
+      <path d="M5 12.5 9 16.5 19 6.5" />
+    </Svg>
+  );
+}
+
+export function IconCheckCircle(props: IconProps) {
+  return (
+    <Svg {...props}>
+      <circle cx="12" cy="12" r="9" />
+      <path d="M8 12.5 11 15.5 16 9.5" />
+    </Svg>
+  );
+}
+
+export function IconBolt(props: IconProps) {
+  return (
+    <Svg {...props}>
+      <path d="M13 2 4 14h7l-1 8 9-12h-7l1-8z" />
+    </Svg>
+  );
+}
+
+export function IconMobile(props: IconProps) {
+  return (
+    <Svg {...props}>
+      <rect x="7" y="2.5" width="10" height="19" rx="2" />
+      <path d="M11 18.5h2" />
+    </Svg>
+  );
+}
+
+export function IconDevices(props: IconProps) {
+  return (
+    <Svg {...props}>
+      <rect x="2" y="5" width="14" height="10" rx="1.5" />
+      <path d="M8 19h6" />
+      <path d="M11 15v4" />
+      <rect x="16" y="7" width="6" height="10" rx="1.5" />
+    </Svg>
+  );
+}
+
+export function IconBrowser(props: IconProps) {
+  return (
+    <Svg {...props}>
+      <rect x="3" y="4" width="18" height="16" rx="2" />
+      <path d="M3 9h18" />
+      <circle cx="6.5" cy="6.5" r="0.75" fill="currentColor" stroke="none" />
+      <circle cx="9.5" cy="6.5" r="0.75" fill="currentColor" stroke="none" />
+      <circle cx="12.5" cy="6.5" r="0.75" fill="currentColor" stroke="none" />
+    </Svg>
+  );
+}
+
+export function IconClock(props: IconProps) {
+  return (
+    <Svg {...props}>
+      <circle cx="12" cy="12" r="9" />
+      <path d="M12 7v5l3 2" />
+    </Svg>
+  );
+}
+
+export function IconTrendUp(props: IconProps) {
+  return (
+    <Svg {...props}>
+      <path d="M4 18V6" />
+      <path d="M20 18H4" />
+      <path d="M7 14l4-4 3 3 5-6" />
+    </Svg>
+  );
+}
+
+export function IconQr(props: IconProps) {
+  return (
+    <Svg {...props}>
+      <rect x="3" y="3" width="7" height="7" rx="1.5" />
+      <rect x="14" y="3" width="7" height="7" rx="1.5" />
+      <rect x="3" y="14" width="7" height="7" rx="1.5" />
+      <path d="M14 14h3v3h-3z" />
+      <path d="M17 17h4v4h-4z" />
+      <path d="M14 20h3" />
+    </Svg>
+  );
+}
+
 export const TAB_ICONS = {
   orders: IconOrders,
   invoices: IconInvoices,

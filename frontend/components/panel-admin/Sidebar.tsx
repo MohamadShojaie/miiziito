@@ -25,7 +25,7 @@ const NAV: NavItem[] = [
   { href: "/panel-admin/audit-logs/", label: "گزارش فعالیت‌ها" },
   { href: "/panel-admin/admin-users/", label: "ادمین‌ها" },
   { href: "/panel-admin/roles/", label: "نقش‌ها" },
-  { href: "/panel-admin/", label: "فروشگاه عمومی", section: "عمومی" },
+  { href: "/", label: "فروشگاه عمومی", section: "عمومی" },
 ];
 
 function pathActive(current: string, href: string): boolean {
@@ -42,8 +42,8 @@ function pathActive(current: string, href: string): boolean {
   if (hrefPath === "/panel-admin/manage/" || hrefPath === "/panel-admin/dashboard/") {
     return currPath.startsWith("/panel-admin/manage") || currPath.startsWith("/panel-admin/dashboard");
   }
-  if (hrefPath === "/panel-admin/") {
-    return currPath === "/panel-admin/";
+  if (hrefPath === "/") {
+    return currPath === "/";
   }
 
   const currParams = new URLSearchParams(currSearch);

@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { apiJson, cashierHeaders } from "@/lib/api";
 import type { Invoice, Order, TableRegion } from "@/lib/types";
-import { DEFAULT_TABLE_REGIONS, ORDER_STATUS_LABEL } from "@/lib/types";
+import { ORDER_STATUS_LABEL } from "@/lib/types";
 import {
   formatOrderTime,
   formatPriceAsNumber,
@@ -195,7 +195,7 @@ export function TablesTab({
   onGoInvoices?: () => void;
 }) {
   const { showToast } = useToast();
-  const rooms = regions?.length ? regions : DEFAULT_TABLE_REGIONS;
+  const rooms = regions ?? [];
   const [selected, setSelected] = useState("");
   const [stateBusy, setStateBusy] = useState(false);
   const [manageBusy, setManageBusy] = useState(false);

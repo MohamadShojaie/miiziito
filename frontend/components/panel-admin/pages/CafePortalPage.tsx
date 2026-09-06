@@ -5,7 +5,7 @@ import { BrandMark } from "@/components/panel-admin/BrandMark";
 import { useEffect, useMemo, useState } from "react";
 import { saFetch } from "@/lib/super-admin/api";
 import { formatDate, formatMoney } from "@/lib/super-admin/format";
-import type { Cafe, Plan, Subscription } from "@/lib/super-admin/types";
+import type { Cafe, Plan, Subscription, SupportTicket } from "@/lib/super-admin/types";
 import { toast } from "../ui/Toast";
 import { Badge, ErrorBox, PageHeader, SkeletonTable } from "../ui/primitives";
 
@@ -18,12 +18,73 @@ type RequestRow = {
   price?: number;
   createdAt: string;
   note?: string;
+  paymentCardNumber?: string;
+  paymentCardHolder?: string;
+  paymentInstructions?: string;
+  adminNote?: string;
+  userPaymentReference?: string;
+  userPaymentNote?: string;
 };
+
+const REQUEST_STEPS = [
+  { key: "pending", label: "ثبت درخواست" },
+  { key: "awaiting_payment", label: "دریافت شماره کارت" },
+  { key: "payment_submitted", label: "ثبت پرداخت" },
+  { key: "fulfilled", label: "فعال‌سازی" },
+];
+
+function requestStepIndex(status: string): number {
+  if (status === "contacted") return 1;
+  if (status === "awaiting_payment") return 1;
+  if (status === "payment_submitted") return 2;
+  if (status === "fulfilled") return 3;
+  if (status === "rejected") return -1;
+  return 0;
+}
+
+function RequestStepTracker({ status }: { status: string }) {
+  const current = requestStepIndex(status);
+  if (status === "rejected") {
+    return <p style={{ color: "var(--sa-danger)" }}>درخواست رد شده است.</p>;
+  }
+  return (
+    <ol className="sa-steps" style={{ margin: "0 0 16px", padding: 0, listStyle: "none" }}>
+      {REQUEST_STEPS.map((step, i) => (
+        <li
+          key={step.key}
+          style={{
+            padding: "8px 0",
+            color: i <= current ? "var(--sa-text)" : "var(--sa-text-faint)",
+            fontWeight: i === current ? 600 : 400,
+          }}
+        >
+          {i < current ? "✓ " : i === current ? "● " : "○ "}
+          {step.label}
+        </li>
+      ))}
+    </ol>
+  );
+}
 
 const CYCLE_LABEL: Record<string, string> = {
   monthly: "ماهانه",
   "6months": "۶ ماهه",
   yearly: "سالانه",
+};
+
+type TicketSummary = {
+  id: string;
+  subject: string;
+  status: string;
+  priority: string;
+  createdAt: string;
+  lastReplyAt?: string | null;
+};
+
+const MSG_FROM_FA: Record<string, string> = {
+  admin: "پشتیبانی",
+  cafe: "شما",
+  system: "سیستم",
 };
 
 export function CafePortalPage({
@@ -49,6 +110,20 @@ export function CafePortalPage({
   const [cycle, setCycle] = useState(preselectCycle || "monthly");
   const [note, setNote] = useState("");
   const [sending, setSending] = useState(false);
+  const [paymentRef, setPaymentRef] = useState("");
+  const [paymentNote, setPaymentNote] = useState("");
+  const [confirmingPay, setConfirmingPay] = useState(false);
+  const [paymentInstructions, setPaymentInstructions] = useState("");
+  const [supportPhone, setSupportPhone] = useState("");
+  const [tickets, setTickets] = useState<TicketSummary[]>([]);
+  const [ticketSubject, setTicketSubject] = useState("");
+  const [ticketBody, setTicketBody] = useState("");
+  const [creatingTicket, setCreatingTicket] = useState(false);
+  const [selectedTicketId, setSelectedTicketId] = useState<string | null>(null);
+  const [selectedTicket, setSelectedTicket] = useState<SupportTicket | null>(null);
+  const [ticketReply, setTicketReply] = useState("");
+  const [loadingTicket, setLoadingTicket] = useState(false);
+  const [sendingReply, setSendingReply] = useState(false);
 
   async function load() {
     setLoading(true);
@@ -61,6 +136,9 @@ export function CafePortalPage({
         history: Subscription[];
         requests: RequestRow[];
         plans: Plan[];
+        paymentInstructions?: string;
+        supportPhone?: string;
+        tickets?: TicketSummary[];
       }>("sa-cafe-portal");
       setCafe(data.cafe);
       setPlan(data.plan);
@@ -68,6 +146,9 @@ export function CafePortalPage({
       setHistory(data.history || []);
       setRequests(data.requests || []);
       setPlans(data.plans || []);
+      setPaymentInstructions(data.paymentInstructions || "");
+      setSupportPhone(data.supportPhone || "");
+      setTickets(data.tickets || []);
       if (!planId && data.plans?.[0]) setPlanId(data.plans[0].id);
     } catch {
       setError("بارگذاری حساب ممکن نشد. دوباره وارد شوید.");
@@ -83,6 +164,105 @@ export function CafePortalPage({
 
   const selected = useMemo(() => plans.find((p) => p.id === planId), [plans, planId]);
   const price = selected?.prices?.[cycle as "monthly" | "6months" | "yearly"] ?? 0;
+  const activeRequest = useMemo(
+    () =>
+      requests.find((r) =>
+        ["pending", "awaiting_payment", "contacted", "payment_submitted"].includes(r.status)
+      ) || null,
+    [requests]
+  );
+
+  async function confirmPayment() {
+    if (!activeRequest) return;
+    setConfirmingPay(true);
+    try {
+      await saFetch("sa-recharge-request", {
+        id: activeRequest.id,
+        method: "POST",
+        body: JSON.stringify({
+          action: "confirm_payment",
+          paymentReference: paymentRef.trim(),
+          note: paymentNote.trim(),
+        }),
+      });
+      toast("پرداخت ثبت شد. پس از تأیید، حساب فعال می‌شود.", "success");
+      setPaymentRef("");
+      setPaymentNote("");
+      load();
+    } catch {
+      toast("ثبت پرداخت ناموفق بود", "error");
+    } finally {
+      setConfirmingPay(false);
+    }
+  }
+
+  async function createSupportTicket() {
+    const subject = ticketSubject.trim();
+    const body = ticketBody.trim();
+    if (!subject) {
+      toast("موضوع تیکت را وارد کنید", "error");
+      return;
+    }
+    setCreatingTicket(true);
+    try {
+      const res = await saFetch<{ ticket: SupportTicket }>("sa-cafe-support", {
+        method: "POST",
+        body: JSON.stringify({ subject, body }),
+      });
+      toast("تیکت پشتیبانی ثبت شد", "success");
+      setTicketSubject("");
+      setTicketBody("");
+      setSelectedTicketId(res.ticket.id);
+      setSelectedTicket(res.ticket);
+      load();
+    } catch {
+      toast("ثبت تیکت ناموفق بود", "error");
+    } finally {
+      setCreatingTicket(false);
+    }
+  }
+
+  async function openTicket(id: string) {
+    if (selectedTicketId === id) {
+      setSelectedTicketId(null);
+      setSelectedTicket(null);
+      setTicketReply("");
+      return;
+    }
+    setSelectedTicketId(id);
+    setLoadingTicket(true);
+    setSelectedTicket(null);
+    setTicketReply("");
+    try {
+      const res = await saFetch<{ ticket: SupportTicket }>("sa-cafe-support-item", { id });
+      setSelectedTicket(res.ticket);
+    } catch {
+      toast("بارگذاری تیکت ناموفق بود", "error");
+      setSelectedTicketId(null);
+    } finally {
+      setLoadingTicket(false);
+    }
+  }
+
+  async function sendTicketReply() {
+    if (!selectedTicketId || !ticketReply.trim()) return;
+    setSendingReply(true);
+    try {
+      const res = await saFetch<{ ticket: SupportTicket }>("sa-cafe-support-item", {
+        id: selectedTicketId,
+        method: "POST",
+        body: JSON.stringify({ action: "reply", body: ticketReply.trim() }),
+      });
+      setSelectedTicket(res.ticket);
+      setTicketReply("");
+      toast("پاسخ ارسال شد", "success");
+      load();
+    } catch {
+      toast("ارسال پاسخ ناموفق بود", "error");
+    } finally {
+      setSendingReply(false);
+    }
+  }
 
   async function sendRequest() {
     if (!planId) {
@@ -100,7 +280,7 @@ export function CafePortalPage({
           note,
         }),
       });
-      toast("درخواست ثبت شد. به‌زودی با شما تماس می‌گیریم.", "success");
+      toast("درخواست ثبت شد. به‌زودی شماره کارت اینجا نمایش داده می‌شود.", "success");
       setNote("");
       load();
     } catch {
@@ -121,7 +301,7 @@ export function CafePortalPage({
           <small>حساب اشتراک</small>
         </div>
         <div className="sa-store-nav-actions">
-          <button type="button" className="sa-btn sa-btn-ghost" onClick={() => onNavigate("/panel-admin/")}>
+          <button type="button" className="sa-btn sa-btn-ghost" onClick={() => onNavigate("/")}>
             فروشگاه
           </button>
           <button type="button" className="sa-btn sa-btn-ghost" onClick={onLogout}>
@@ -176,8 +356,76 @@ export function CafePortalPage({
           </div>
           <div className="sa-panel-body">
             <p style={{ color: "var(--sa-text-muted)", fontSize: "0.9rem", marginTop: 0 }}>
-              پرداخت آنلاین نداریم. درخواست بفرستید؛ ما تماس می‌گیریم یا تیکت می‌زنیم و حساب را شارژ می‌کنیم.
+              {paymentInstructions ||
+                "درخواست بفرستید. شماره کارت در همین صفحه نمایش داده می‌شود. بعد از واریز، «پرداخت کردم» را بزنید."}
             </p>
+            {activeRequest ? (
+              <div className="sa-panel" style={{ marginBottom: 16, background: "var(--sa-surface-soft)" }}>
+                <div className="sa-panel-body">
+                  <h3 style={{ marginTop: 0 }}>درخواست جاری</h3>
+                  <RequestStepTracker status={activeRequest.status} />
+                  <div className="sa-detail-grid">
+                    <div className="sa-detail-item">
+                      <label>پلن</label>
+                      <strong>{activeRequest.planName}</strong>
+                    </div>
+                    <div className="sa-detail-item">
+                      <label>مبلغ</label>
+                      <strong>{formatMoney(activeRequest.price || 0)}</strong>
+                    </div>
+                    <div className="sa-detail-item">
+                      <label>وضعیت</label>
+                      <strong>
+                        <Badge status={activeRequest.status} />
+                      </strong>
+                    </div>
+                  </div>
+                  {(activeRequest.status === "awaiting_payment" || activeRequest.status === "contacted") &&
+                  activeRequest.paymentCardNumber ? (
+                    <div style={{ marginTop: 12, padding: 12, borderRadius: 8, background: "var(--sa-bg)" }}>
+                      <p style={{ margin: "0 0 8px", fontWeight: 600 }}>اطلاعات واریز</p>
+                      <p style={{ margin: "4px 0" }} dir="ltr">
+                        کارت: {activeRequest.paymentCardNumber}
+                      </p>
+                      {activeRequest.paymentCardHolder ? (
+                        <p style={{ margin: "4px 0" }}>به نام: {activeRequest.paymentCardHolder}</p>
+                      ) : null}
+                      {activeRequest.adminNote ? (
+                        <p style={{ margin: "8px 0 0", color: "var(--sa-text-muted)" }}>{activeRequest.adminNote}</p>
+                      ) : null}
+                      <div className="sa-field" style={{ marginTop: 12 }}>
+                        <label className="sa-label">شماره پیگیری / ۴ رقم آخر کارت</label>
+                        <input className="sa-input" value={paymentRef} onChange={(e) => setPaymentRef(e.target.value)} />
+                      </div>
+                      <div className="sa-field">
+                        <label className="sa-label">توضیح (اختیاری)</label>
+                        <input className="sa-input" value={paymentNote} onChange={(e) => setPaymentNote(e.target.value)} />
+                      </div>
+                      <button
+                        type="button"
+                        className="sa-btn sa-btn-primary"
+                        disabled={confirmingPay || !paymentRef.trim()}
+                        onClick={confirmPayment}
+                      >
+                        {confirmingPay ? "در حال ثبت…" : "پرداخت کردم"}
+                      </button>
+                    </div>
+                  ) : null}
+                  {activeRequest.status === "payment_submitted" ? (
+                    <p style={{ marginTop: 12, color: "var(--sa-text-muted)" }}>
+                      پرداخت شما ثبت شد. پس از تأیید مدیر، اشتراک فعال می‌شود.
+                    </p>
+                  ) : null}
+                  {activeRequest.status === "pending" ? (
+                    <p style={{ marginTop: 12, color: "var(--sa-text-muted)" }}>
+                      درخواست شما ثبت شد. به‌زودی شماره کارت اینجا نمایش داده می‌شود.
+                    </p>
+                  ) : null}
+                </div>
+              </div>
+            ) : null}
+            {!activeRequest ? (
+              <>
             <div className="sa-field">
               <label className="sa-label">پلن</label>
               <select className="sa-select" value={planId} onChange={(e) => setPlanId(e.target.value)}>
@@ -213,7 +461,139 @@ export function CafePortalPage({
             <button type="button" className="sa-btn sa-btn-primary" disabled={sending} onClick={sendRequest}>
               {sending ? "در حال ارسال…" : "ارسال درخواست"}
             </button>
+              </>
+            ) : null}
           </div>
+        </div>
+      </div>
+
+      <div className="sa-panel" style={{ marginTop: 16 }}>
+        <div className="sa-panel-head">
+          <h2>پشتیبانی</h2>
+        </div>
+        <div className="sa-panel-body">
+          {supportPhone ? (
+            <div className="sa-detail-item" style={{ marginBottom: 16 }}>
+              <label>تماس با پشتیبانی</label>
+              <strong>
+                <a href={`tel:${supportPhone.replace(/\s/g, "")}`} dir="ltr" style={{ color: "var(--sa-accent)" }}>
+                  {supportPhone}
+                </a>
+              </strong>
+            </div>
+          ) : (
+            <p style={{ color: "var(--sa-text-muted)", fontSize: "0.9rem", marginTop: 0 }}>
+              برای ارتباط با پشتیبانی، تیکت ثبت کنید.
+            </p>
+          )}
+
+          <div className="sa-field">
+            <label className="sa-label">موضوع تیکت جدید</label>
+            <input
+              className="sa-input"
+              value={ticketSubject}
+              onChange={(e) => setTicketSubject(e.target.value)}
+              placeholder="مثلاً: مشکل در منوی دیجیتال"
+            />
+          </div>
+          <div className="sa-field">
+            <label className="sa-label">متن پیام</label>
+            <textarea
+              className="sa-textarea"
+              rows={3}
+              value={ticketBody}
+              onChange={(e) => setTicketBody(e.target.value)}
+              placeholder="توضیح مشکل یا درخواست خود را بنویسید…"
+            />
+          </div>
+          <button
+            type="button"
+            className="sa-btn sa-btn-primary"
+            disabled={creatingTicket}
+            onClick={createSupportTicket}
+          >
+            {creatingTicket ? "در حال ارسال…" : "ارسال تیکت پشتیبانی"}
+          </button>
+
+          {!tickets.length ? (
+            <div className="sa-empty" style={{ padding: 28, marginTop: 16 }}>
+              هنوز تیکتی ثبت نکرده‌اید.
+            </div>
+          ) : (
+            <div className="sa-table-wrap" style={{ marginTop: 20 }}>
+              <table className="sa-table">
+                <thead>
+                  <tr>
+                    <th>موضوع</th>
+                    <th>وضعیت</th>
+                    <th>تاریخ</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {tickets.map((t) => (
+                    <tr
+                      key={t.id}
+                      style={{ cursor: "pointer", background: selectedTicketId === t.id ? "var(--sa-surface-soft)" : undefined }}
+                      onClick={() => openTicket(t.id)}
+                    >
+                      <td data-label="موضوع">{t.subject}</td>
+                      <td data-label="وضعیت">
+                        <Badge status={t.status} />
+                      </td>
+                      <td data-label="تاریخ">{formatDate(t.createdAt)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+
+          {selectedTicketId ? (
+            <div className="sa-panel" style={{ marginTop: 16, background: "var(--sa-surface-soft)" }}>
+              <div className="sa-panel-body">
+                {loadingTicket ? (
+                  <p style={{ color: "var(--sa-text-muted)" }}>در حال بارگذاری…</p>
+                ) : selectedTicket ? (
+                  <>
+                    <div className="sa-actions-row" style={{ marginTop: 0, marginBottom: 12 }}>
+                      <strong>{selectedTicket.subject}</strong>
+                      <Badge status={selectedTicket.status} />
+                    </div>
+                    {(selectedTicket.messages || []).map((m) => (
+                      <div key={m.id} style={{ padding: "10px 0", borderBottom: "1px solid var(--sa-border)" }}>
+                        <div style={{ fontSize: "0.75rem", color: "var(--sa-text-faint)" }}>
+                          {MSG_FROM_FA[m.from] || m.from} · {formatDate(m.createdAt)}
+                        </div>
+                        <div style={{ marginTop: 4 }}>{m.body}</div>
+                      </div>
+                    ))}
+                    {selectedTicket.status !== "closed" && selectedTicket.status !== "resolved" ? (
+                      <>
+                        <div className="sa-field" style={{ marginTop: 12 }}>
+                          <label className="sa-label">پاسخ شما</label>
+                          <textarea
+                            className="sa-textarea"
+                            rows={3}
+                            value={ticketReply}
+                            onChange={(e) => setTicketReply(e.target.value)}
+                            placeholder="پاسخ یا توضیح بیشتر…"
+                          />
+                        </div>
+                        <button
+                          type="button"
+                          className="sa-btn sa-btn-primary"
+                          disabled={sendingReply || !ticketReply.trim()}
+                          onClick={sendTicketReply}
+                        >
+                          {sendingReply ? "در حال ارسال…" : "ارسال پاسخ"}
+                        </button>
+                      </>
+                    ) : null}
+                  </>
+                ) : null}
+              </div>
+            </div>
+          ) : null}
         </div>
       </div>
 

@@ -3,6 +3,7 @@
 import { useEffect } from "react";
 import { applyTheme, SITE_CONFIG } from "@/lib/config";
 import { apiJson, sandboxHeaders } from "@/lib/api";
+import { getMenuTenantSlug, tenantApiHeaders, tenantSlugFromPath } from "@/lib/tenant";
 import {
   applySiteTheme,
   mergeSiteSettings,
@@ -14,10 +15,12 @@ import { ToastProvider } from "@/components/ToastProvider";
 export function Providers({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     applyTheme(SITE_CONFIG);
+    const tenant = tenantSlugFromPath() || getMenuTenantSlug();
+    const headers = tenant ? tenantApiHeaders() : sandboxHeaders();
     apiJson<{ settings?: Partial<SiteSettings> }>("/api/settings", {
       auth: false,
-      sandbox: true,
-      headers: sandboxHeaders(),
+      sandbox: !tenant,
+      headers,
     })
       .then((data) => applySiteTheme(mergeSiteSettings(data.settings)))
       .catch(() => {});

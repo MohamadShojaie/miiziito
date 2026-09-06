@@ -8,12 +8,27 @@ import json
 import os
 import re
 import secrets
+import sys
 import time
 import uuid
 from pathlib import Path
 from typing import Any, Callable
 
 ROOT = Path(__file__).resolve().parents[1]
+TOOLS = Path(__file__).resolve().parent
+if str(TOOLS) not in sys.path:
+    sys.path.insert(0, str(TOOLS))
+from tenant_slug import (
+    assign_slug,
+    cashier_auth_meta,
+    ensure_cafe_slugs,
+    generate_cashier_password,
+    has_cashier_password,
+    provision_live_cafes,
+    provision_tenant,
+    set_tenant_cashier_password,
+)
+
 DATA = ROOT / "data"
 PLATFORM = DATA / "platform"
 SECRET = DATA / "secret.php"
@@ -263,6 +278,41 @@ def save_collection(name: str, data: Any) -> None:
     _write_json(_collection(name, None), data)
 
 
+def _load_cafes_with_slugs() -> list:
+    cafes = load_collection("cafes", [])
+    if not isinstance(cafes, list):
+        cafes = []
+    cafes, changed = ensure_cafe_slugs(cafes)
+    if changed:
+        save_collection("cafes", cafes)
+    provision_live_cafes(cafes)
+    return cafes
+
+
+def _cafe_set_cashier_password(cafe: dict, password: str) -> None:
+    settings = cafe.get("settings")
+    if not isinstance(settings, dict):
+        settings = {}
+    settings["cashierPassword"] = str(password)
+    cafe["settings"] = settings
+    tenant_id = str(cafe.get("id") or "")
+    if tenant_id:
+        provision_tenant(cafe)
+        set_tenant_cashier_password(tenant_id, password)
+
+
+def _cafe_for_admin(cafe: dict) -> dict:
+    out = dict(cafe)
+    settings = out.get("settings")
+    if isinstance(settings, dict):
+        settings = dict(settings)
+        settings.pop("cashierPasswordHash", None)
+        settings["hasCashierPassword"] = has_cashier_password(str(out.get("id") or ""))
+        out["settings"] = settings
+    out["cashierAuth"] = cashier_auth_meta(str(out.get("id") or ""))
+    return out
+
+
 def _hash_password(password: str, salt: str | None = None) -> str:
     salt = salt or secrets.token_hex(16)
     digest = hashlib.pbkdf2_hmac(
@@ -356,7 +406,10 @@ def ensure_platform() -> None:
             "gracePeriodDays": 3,
             "currency": "IRT",
             "supportPhone": "",
-            "supportNote": "پس از ثبت درخواست، با شما تماس می‌گیریم یا تیکت پشتیبانی ارسال می‌کنیم.",
+            "supportNote": "پس از ثبت درخواست، شماره کارت برای واریز ارسال می‌شود.",
+            "paymentCardNumber": "",
+            "paymentCardHolder": "",
+            "paymentInstructions": "مبلغ را کارت‌به‌کارت کنید و در مرحله بعد اطلاعات واریز را ثبت کنید.",
         }),
     ):
         cur = load_collection(name, None)
@@ -543,6 +596,19 @@ def _find_cafe(tenant_id: str) -> dict | None:
     return None
 
 
+def _cafe_tickets_for_owner(owner: dict) -> list:
+    tickets = load_collection("support_tickets", [])
+    if not isinstance(tickets, list):
+        tickets = []
+    owner_tenant = owner.get("tenantId")
+    mine = [t for t in tickets if isinstance(t, dict) and t.get("tenantId") == owner_tenant]
+    return sorted(mine, key=lambda t: t.get("createdAt") or "", reverse=True)
+
+
+def _cafe_ticket_owned(ticket: dict, owner: dict) -> bool:
+    return isinstance(ticket, dict) and ticket.get("tenantId") == owner.get("tenantId")
+
+
 def _cafe_portal_payload(owner: dict) -> dict:
     cafe = _find_cafe(str(owner.get("tenantId") or ""))
     plans = load_collection("plans", [])
@@ -574,6 +640,21 @@ def _cafe_portal_payload(owner: dict) -> dict:
     current_plan = plan_map.get((current or {}).get("planId")) if current else None
     if not current_plan and cafe:
         current_plan = plan_map.get(cafe.get("planId"))
+    settings = load_collection("settings", {})
+    if not isinstance(settings, dict):
+        settings = {}
+    my_tickets = _cafe_tickets_for_owner(owner)
+    ticket_summaries = [
+        {
+            "id": t.get("id"),
+            "subject": t.get("subject"),
+            "status": t.get("status") or "open",
+            "priority": t.get("priority") or "normal",
+            "createdAt": t.get("createdAt"),
+            "lastReplyAt": t.get("lastReplyAt"),
+        }
+        for t in my_tickets[:20]
+    ]
     return {
         "owner": _public_cafe_owner(owner),
         "cafe": cafe,
@@ -582,6 +663,9 @@ def _cafe_portal_payload(owner: dict) -> dict:
         "history": tenant_subs[:20],
         "requests": my_reqs[:20],
         "plans": [p for p in plans if p.get("status") == "active"],
+        "paymentInstructions": str(settings.get("paymentInstructions") or ""),
+        "supportPhone": str(settings.get("supportPhone") or ""),
+        "tickets": ticket_summaries,
     }
 
 
@@ -639,6 +723,72 @@ def _pct_change(current: float, previous: float) -> float | None:
     return round(((current - previous) / abs(previous)) * 100, 1)
 
 
+def _parse_iso_ts(value) -> int | None:
+    if not value:
+        return None
+    try:
+        from datetime import datetime
+
+        return int(datetime.fromisoformat(str(value).replace("Z", "+00:00")).timestamp())
+    except Exception:
+        return None
+
+
+def _support_ticket_meta(ticket: dict) -> dict:
+    messages = ticket.get("messages") or []
+    if not isinstance(messages, list):
+        messages = []
+    last_from = None
+    last_cafe_msg_at = None
+    has_admin_msg = False
+    for m in messages:
+        if not isinstance(m, dict):
+            continue
+        if m.get("from") == "admin":
+            has_admin_msg = True
+        if m.get("from") == "cafe":
+            last_cafe_msg_at = m.get("createdAt") or last_cafe_msg_at
+    if messages:
+        last = messages[-1]
+        if isinstance(last, dict):
+            last_from = last.get("from")
+    status = str(ticket.get("status") or "open")
+    active = status in ("open", "in_progress")
+    needs_admin_reply = active and (last_from == "cafe" or (last_from is None and not has_admin_msg))
+
+    # "New" until an admin opens the ticket; becomes new again if cafe sends after that.
+    admin_read_at = str(ticket.get("adminReadAt") or "")
+    unread_since_open = admin_read_at == ""
+    if not unread_since_open and last_cafe_msg_at:
+        read_ts = _parse_iso_ts(admin_read_at)
+        cafe_ts = _parse_iso_ts(last_cafe_msg_at)
+        if read_ts is not None and cafe_ts is not None and cafe_ts > read_ts:
+            unread_since_open = True
+    is_new = needs_admin_reply and unread_since_open
+    attention_rank = 2 if is_new else (1 if needs_admin_reply else 0)
+    return {
+        "needsAdminReply": needs_admin_reply,
+        "isNew": is_new,
+        "lastMessageFrom": last_from,
+        "attentionRank": attention_rank,
+    }
+
+
+def _enrich_support_tickets(tickets: list) -> list:
+    if not isinstance(tickets, list):
+        return []
+    out = []
+    for t in tickets:
+        if not isinstance(t, dict):
+            continue
+        out.append({**t, **_support_ticket_meta(t)})
+    out.sort(
+        key=lambda x: (int(x.get("attentionRank") or 0), str(x.get("createdAt") or "")),
+        reverse=True,
+    )
+    return out
+
+
 def _filter_page(items: list, qs: dict, search_fields: list[str]) -> dict:
     q = ((qs.get("q") or [""])[0] or "").strip().lower()
     status = ((qs.get("status") or [""])[0] or "").strip().lower()
@@ -655,7 +805,10 @@ def _filter_page(items: list, qs: dict, search_fields: list[str]) -> dict:
 
     filtered = items
     if status:
-        filtered = [i for i in filtered if str(i.get("status") or "").lower() == status]
+        if status == "needs_reply":
+            filtered = [i for i in filtered if i.get("needsAdminReply")]
+        else:
+            filtered = [i for i in filtered if str(i.get("status") or "").lower() == status]
     if q:
         def match(item: dict) -> bool:
             for f in search_fields:
@@ -951,6 +1104,8 @@ def handle(
             "createdAt": _iso(),
             "updatedAt": _iso(),
         }
+        preferred_slug = str(body.get("slug") or "").strip()
+        assign_slug(cafe, cafes, preferred_slug)
         owner = {
             "id": _new_id("cown"),
             "email": email,
@@ -1008,9 +1163,10 @@ def handle(
                 "plans": active,
                 "supportNote": (settings or {}).get(
                     "supportNote",
-                    "پس از ثبت درخواست، با شما تماس می‌گیریم.",
+                    "پس از ثبت درخواست، شماره کارت برای واریز ارسال می‌شود.",
                 ),
                 "supportPhone": (settings or {}).get("supportPhone") or "",
+                "paymentInstructions": (settings or {}).get("paymentInstructions") or "",
             },
         }
 
@@ -1040,6 +1196,92 @@ def handle(
         if err:
             return err
         return {"status": 200, "body": _cafe_portal_payload(owner)}
+
+    if route == "sa-cafe-support" and method == "GET":
+        owner, err = require_cafe(headers, body)
+        if err:
+            return err
+        tickets = _cafe_tickets_for_owner(owner)
+        return {"status": 200, "body": {"items": tickets, "total": len(tickets)}}
+
+    if route == "sa-cafe-support" and method == "POST":
+        owner, err = require_cafe(headers, body)
+        if err:
+            return err
+        subject = str(body.get("subject") or "").strip()
+        msg_body = str(body.get("body") or "").strip()
+        if not subject:
+            return {"status": 400, "body": {"error": "missing_subject"}}
+        cafe = _find_cafe(str(owner.get("tenantId") or ""))
+        tickets = load_collection("support_tickets", [])
+        if not isinstance(tickets, list):
+            tickets = []
+        messages = []
+        if msg_body:
+            messages.append(
+                {
+                    "id": _new_id("msg"),
+                    "from": "cafe",
+                    "body": msg_body,
+                    "createdAt": _iso(),
+                }
+            )
+        ticket = {
+            "id": _new_id("tkt"),
+            "tenantId": owner.get("tenantId"),
+            "cafeName": (cafe or {}).get("name") or "",
+            "cafeOwnerEmail": owner.get("email") or "",
+            "subject": subject,
+            "priority": "normal",
+            "status": "open",
+            "assignedAdminId": None,
+            "messages": messages,
+            "createdAt": _iso(),
+            "updatedAt": _iso(),
+            "lastReplyAt": _iso() if msg_body else None,
+        }
+        tickets.insert(0, ticket)
+        save_collection("support_tickets", tickets)
+        return {"status": 200, "body": {"ticket": ticket}}
+
+    if route == "sa-cafe-support-item" and item_id:
+        owner, err = require_cafe(headers, body)
+        if err:
+            return err
+        tickets = load_collection("support_tickets", [])
+        if not isinstance(tickets, list):
+            tickets = []
+        idx = next((i for i, t in enumerate(tickets) if t.get("id") == item_id), -1)
+        if idx < 0:
+            return {"status": 404, "body": {"error": "not_found"}}
+        ticket = tickets[idx]
+        if not _cafe_ticket_owned(ticket, owner):
+            return {"status": 403, "body": {"error": "forbidden"}}
+        if method == "GET":
+            return {"status": 200, "body": {"ticket": ticket}}
+        if method == "POST":
+            action = str(body.get("action") or "reply")
+            if action == "reply":
+                msg_body = str(body.get("body") or "").strip()
+                if not msg_body:
+                    return {"status": 400, "body": {"error": "missing_body"}}
+                msgs = ticket.get("messages") or []
+                msgs.append(
+                    {
+                        "id": _new_id("msg"),
+                        "from": "cafe",
+                        "body": msg_body,
+                        "createdAt": _iso(),
+                    }
+                )
+                ticket["messages"] = msgs
+                ticket["lastReplyAt"] = _iso()
+                if ticket.get("status") == "waiting_customer":
+                    ticket["status"] = "open"
+            ticket["updatedAt"] = _iso()
+            tickets[idx] = ticket
+            save_collection("support_tickets", tickets)
+            return {"status": 200, "body": {"ticket": ticket}}
 
     if route == "sa-recharge-requests" and method == "GET":
         admin = session_admin(get_token(headers, body))
@@ -1097,6 +1339,13 @@ def handle(
             "currency": "IRT",
             "note": note,
             "adminNote": "",
+            "paymentCardNumber": "",
+            "paymentCardHolder": "",
+            "paymentInstructions": "",
+            "userPaymentReference": "",
+            "userPaymentNote": "",
+            "paymentSentAt": None,
+            "paymentSubmittedAt": None,
             "createdAt": _iso(),
             "updatedAt": _iso(),
             "contactedAt": None,
@@ -1136,13 +1385,6 @@ def handle(
         return {"status": 200, "body": {"request": req, "ticket": ticket}}
 
     if route == "sa-recharge-request" and item_id and method == "POST":
-        admin, err = require_admin(headers, body, "subscriptions.write")
-        if err:
-            admin, err2 = require_admin(headers, body)
-            if err2:
-                return err2
-            if not has_permission(admin, "*") and not has_permission(admin, "support.write"):
-                return err
         reqs = load_collection("recharge_requests", [])
         if not isinstance(reqs, list):
             reqs = []
@@ -1151,12 +1393,66 @@ def handle(
             return {"status": 404, "body": {"error": "not_found"}}
         req = reqs[idx]
         action = str(body.get("action") or "")
-        if action == "contact":
-            req["status"] = "contacted"
-            req["contactedAt"] = _iso()
+
+        admin = session_admin(get_token(headers, body))
+        if not admin:
+            owner, err = require_cafe(headers, body)
+            if err:
+                return err
+            if action != "confirm_payment":
+                return {"status": 403, "body": {"error": "forbidden"}}
+            owner_tenant = owner.get("tenantId")
+            owner_id = owner.get("id")
+            owns = req.get("tenantId") == owner_tenant or req.get("cafeOwnerId") == owner_id
+            if not owns:
+                return {"status": 403, "body": {"error": "forbidden"}}
+            st = str(req.get("status") or "")
+            if st not in ("awaiting_payment", "contacted"):
+                return {"status": 400, "body": {"error": "invalid_status"}}
+            req["status"] = "payment_submitted"
+            req["userPaymentReference"] = str(
+                body.get("paymentReference") or body.get("reference") or ""
+            ).strip()
+            req["userPaymentNote"] = str(
+                body.get("note") or body.get("userPaymentNote") or ""
+            ).strip()
+            req["paymentSubmittedAt"] = _iso()
+            req["updatedAt"] = _iso()
+            reqs[idx] = req
+            save_collection("recharge_requests", reqs)
+            return {"status": 200, "body": {"request": req}}
+
+        admin, err = require_admin(headers, body, "subscriptions.write")
+        if err:
+            admin, err2 = require_admin(headers, body)
+            if err2:
+                return err2
+            if not has_permission(admin, "*") and not has_permission(admin, "support.write"):
+                return err
+        if action in ("contact", "send_payment_info"):
+            settings = load_collection("settings", {})
+            if not isinstance(settings, dict):
+                settings = {}
+            card = str(
+                body.get("paymentCardNumber")
+                or settings.get("paymentCardNumber")
+                or ""
+            ).strip()
+            if not card:
+                return {"status": 400, "body": {"error": "payment_card_missing"}}
+            req["status"] = "awaiting_payment"
+            req["paymentCardNumber"] = card
+            req["paymentCardHolder"] = str(
+                body.get("paymentCardHolder") or settings.get("paymentCardHolder") or ""
+            ).strip()
+            req["paymentInstructions"] = str(
+                body.get("paymentInstructions") or settings.get("paymentInstructions") or ""
+            ).strip()
+            req["paymentSentAt"] = _iso()
+            req["contactedAt"] = req["paymentSentAt"]
             req["adminNote"] = str(body.get("adminNote") or req.get("adminNote") or "")
             req["updatedAt"] = _iso()
-            _audit(admin, "contact_recharge_request", "recharge_request", req["id"], ip)
+            _audit(admin, "send_payment_info", "recharge_request", req["id"], ip)
         elif action == "reject":
             req["status"] = "rejected"
             req["adminNote"] = str(body.get("adminNote") or "")
@@ -1227,6 +1523,9 @@ def handle(
                         c["planId"] = plan_id
                         c["subscriptionId"] = sub["id"]
                         c["updatedAt"] = _iso()
+                        if not c.get("slug"):
+                            assign_slug(c, cafes)
+                        provision_tenant(c)
                         cafes[i] = c
                         break
                 save_collection("cafes", cafes)
@@ -1268,11 +1567,9 @@ def handle(
         admin, err = require_admin(headers, body, "cafes.read")
         if err:
             return err
-        cafes = load_collection("cafes", [])
-        if not isinstance(cafes, list):
-            cafes = []
+        cafes = _load_cafes_with_slugs()
         return {"status": 200, "body": _filter_page(
-            cafes, qs, ["name", "ownerName", "email", "phone", "id", "subscriptionId"]
+            cafes, qs, ["name", "ownerName", "email", "phone", "id", "subscriptionId", "slug"]
         )}
 
     if route == "sa-cafes" and method == "POST":
@@ -1306,18 +1603,27 @@ def handle(
             "createdAt": _iso(),
             "updatedAt": _iso(),
         }
+        assign_slug(cafe, cafes, str(body.get("slug") or "").strip())
+        provision_tenant(cafe)
+        cashier_password = generate_cashier_password()
+        _cafe_set_cashier_password(cafe, cashier_password)
         cafes.append(cafe)
         save_collection("cafes", cafes)
         _audit(admin, "create_cafe", "cafe", cafe["id"], ip, {"name": cafe["name"]})
-        return {"status": 200, "body": {"cafe": cafe}}
+        return {
+            "status": 200,
+            "body": {
+                "cafe": _cafe_for_admin(cafe),
+                "cashierPassword": cashier_password,
+                "temporaryPassword": cashier_password,
+            },
+        }
 
     if route == "sa-cafe" and item_id:
         admin, err = require_admin(headers, body)
         if err:
             return err
-        cafes = load_collection("cafes", [])
-        if not isinstance(cafes, list):
-            cafes = []
+        cafes = _load_cafes_with_slugs()
         idx = next((i for i, c in enumerate(cafes) if c.get("id") == item_id), -1)
         if idx < 0:
             return {"status": 404, "body": {"error": "not_found"}}
@@ -1334,13 +1640,40 @@ def handle(
                         if s.get("status") not in ("cancelled",):
                             sub = s
                             break
-            return {"status": 200, "body": {"cafe": cafe, "subscription": sub}}
+            return {
+                "status": 200,
+                "body": {
+                    "cafe": _cafe_for_admin(cafe),
+                    "subscription": sub,
+                    "cashierAuth": cashier_auth_meta(str(cafe.get("id") or "")),
+                },
+            }
 
         if method == "POST":
             if not has_permission(admin, "cafes.write"):
                 return {"status": 403, "body": {"error": "forbidden"}}
             action = str(body.get("action") or "update")
             cafe = cafes[idx]
+            if action in ("reset_cashier_password", "set_cashier_password"):
+                provided = str(body.get("password") or "").strip()
+                new_password = provided or generate_cashier_password()
+                if len(new_password) < 4:
+                    return {"status": 400, "body": {"error": "weak_password"}}
+                provision_tenant(cafe)
+                _cafe_set_cashier_password(cafe, new_password)
+                cafe["updatedAt"] = _iso()
+                cafes[idx] = cafe
+                save_collection("cafes", cafes)
+                _audit(admin, "reset_cashier_password", "cafe", cafe["id"], ip)
+                return {
+                    "status": 200,
+                    "body": {
+                        "cafe": _cafe_for_admin(cafe),
+                        "cashierPassword": new_password,
+                        "temporaryPassword": new_password,
+                        "cashierAuth": cashier_auth_meta(str(cafe.get("id") or "")),
+                    },
+                }
             if action == "update":
                 for key in ("name", "ownerName", "email", "phone", "status", "planId"):
                     if key in body:
@@ -1796,8 +2129,9 @@ def handle(
         tickets = load_collection("support_tickets", [])
         if not isinstance(tickets, list):
             tickets = []
+        tickets = _enrich_support_tickets(tickets)
         return {"status": 200, "body": _filter_page(
-            tickets, qs, ["id", "subject", "tenantId", "status", "priority"]
+            tickets, qs, ["id", "subject", "tenantId", "status", "priority", "cafeName", "cafeOwnerEmail"]
         )}
 
     if route == "sa-support" and method == "POST":
@@ -1810,9 +2144,11 @@ def handle(
         ticket = {
             "id": _new_id("tkt"),
             "tenantId": body.get("tenantId"),
+            "cafeName": "",
+            "cafeOwnerEmail": "",
             "subject": str(body.get("subject") or "Support request"),
             "priority": str(body.get("priority") or "normal"),
-            "status": "open",
+            "status": "waiting_customer" if body.get("body") else "open",
             "assignedAdminId": body.get("assignedAdminId"),
             "messages": [
                 {
@@ -1829,6 +2165,10 @@ def handle(
             "updatedAt": _iso(),
             "lastReplyAt": _iso() if body.get("body") else None,
         }
+        if body.get("tenantId"):
+            cafe_for_ticket = _find_cafe(str(body.get("tenantId")))
+            if cafe_for_ticket:
+                ticket["cafeName"] = cafe_for_ticket.get("name") or ""
         tickets.insert(0, ticket)
         save_collection("support_tickets", tickets)
         return {"status": 200, "body": {"ticket": ticket}}
@@ -1844,7 +2184,12 @@ def handle(
         if idx < 0:
             return {"status": 404, "body": {"error": "not_found"}}
         if method == "GET":
-            return {"status": 200, "body": {"ticket": tickets[idx]}}
+            ticket = tickets[idx]
+            ticket["adminReadAt"] = _iso()
+            ticket["updatedAt"] = _iso()
+            tickets[idx] = ticket
+            save_collection("support_tickets", tickets)
+            return {"status": 200, "body": {"ticket": {**ticket, **_support_ticket_meta(ticket)}}}
         if method == "POST":
             if not has_permission(admin, "support.write"):
                 return {"status": 403, "body": {"error": "forbidden"}}
@@ -1863,7 +2208,8 @@ def handle(
                 )
                 ticket["messages"] = msgs
                 ticket["lastReplyAt"] = _iso()
-                ticket["status"] = str(body.get("status") or "in_progress")
+                ticket["adminReadAt"] = _iso()
+                ticket["status"] = str(body.get("status") or "waiting_customer")
             else:
                 for key in ("status", "priority", "assignedAdminId", "subject"):
                     if key in body:
@@ -1871,7 +2217,7 @@ def handle(
             ticket["updatedAt"] = _iso()
             tickets[idx] = ticket
             save_collection("support_tickets", tickets)
-            return {"status": 200, "body": {"ticket": ticket}}
+            return {"status": 200, "body": {"ticket": {**ticket, **_support_ticket_meta(ticket)}}}
 
     # ── System ────────────────────────────────────────────
     if route == "sa-system-health" and method == "GET":

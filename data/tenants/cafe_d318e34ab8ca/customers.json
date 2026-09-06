@@ -1,0 +1,26 @@
+[
+  {
+    "id": "cust_c1b03a13e860971c",
+    "name": "علی محمدی",
+    "phone": "۰۹۱۳۴۳۳۵۲۶۷",
+    "birthday": "",
+    "notes": "",
+    "tier": "standard",
+    "tags": [],
+    "lastContactAt": null,
+    "createdAt": 1788530499577,
+    "updatedAt": 1788530499577
+  },
+  {
+    "id": "cust_b8e467f9f9f409fd",
+    "name": "مرتضی اسفندیاری",
+    "phone": "۰۹۱۰۷۶۵۴۴۵۶",
+    "birthday": "",
+    "notes": "",
+    "tier": "standard",
+    "tags": [],
+    "lastContactAt": null,
+    "createdAt": 1788530573842,
+    "updatedAt": 1788530573842
+  }
+]

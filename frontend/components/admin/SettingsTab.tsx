@@ -11,6 +11,7 @@ import {
   MENU_STRUCTURE_OPTIONS,
   mergeSiteSettings,
   resolveMenuStructure,
+  settingsBaseForContext,
   type MenuStructureId,
   type SiteSettings,
 } from "@/lib/settings";
@@ -172,22 +173,22 @@ function PreviewCard({
       </div>
       <div className={`settings-preview-shell settings-preview-shell--${layout}`}>
         <div className="settings-preview-tabs">
-          <span className="is-active">قهوه</span>
-          <span>نوشیدنی</span>
-          <span>غذا</span>
+          <span className="is-active">دسته ۱</span>
+          <span>دسته ۲</span>
+          <span>دسته ۳</span>
         </div>
         <div className={`settings-preview-items settings-preview-items--${layout}`}>
           <div className="settings-preview-item">
-            <span>لاته</span>
-            <strong>۲۴۰٬۰۰۰</strong>
+            <span>آیتم نمونه</span>
+            <strong>—</strong>
           </div>
           <div className="settings-preview-item">
-            <span>کاپوچینو</span>
-            <strong>۲۲۰٬۰۰۰</strong>
+            <span>آیتم نمونه</span>
+            <strong>—</strong>
           </div>
           <div className="settings-preview-item">
-            <span>اسپرسو</span>
-            <strong>۱۸۰٬۰۰۰</strong>
+            <span>آیتم نمونه</span>
+            <strong>—</strong>
           </div>
         </div>
       </div>
@@ -211,7 +212,9 @@ function StructureThumb({ id }: { id: MenuStructureId }) {
 
 export function SettingsTab({ active, orders, invoices }: Props) {
   const { showToast } = useToast();
-  const [settings, setSettings] = useState<SiteSettings>(DEFAULT_SITE_SETTINGS);
+  const [settings, setSettings] = useState<SiteSettings>(() =>
+    settingsBaseForContext()
+  );
   const [summary, setSummary] = useState<SettingsSummary | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -230,7 +233,13 @@ export function SettingsTab({ active, orders, invoices }: Props) {
     apiJson<SettingsPayload>("/api/settings", { headers: cashierHeaders() })
       .then((data) => {
         if (cancelled) return;
-        const next = mergeSiteSettings(data.settings);
+        const next = mergeSiteSettings(
+          data.settings,
+          settingsBaseForContext(
+            data.settings?.restaurantNameFa,
+            data.settings?.restaurantNameEn
+          )
+        );
         setSettings(next);
         setSummary(data.summary || null);
         setLogoDraft(null);
@@ -372,7 +381,11 @@ export function SettingsTab({ active, orders, invoices }: Props) {
   }
 
   function resetDefaults() {
-    setSettings(DEFAULT_SITE_SETTINGS);
+    const base = settingsBaseForContext(
+      settings.restaurantNameFa,
+      settings.restaurantNameEn
+    );
+    setSettings(base);
     setLogoDraft(null);
     setBgDraft(null);
     setLogoCleared(true);

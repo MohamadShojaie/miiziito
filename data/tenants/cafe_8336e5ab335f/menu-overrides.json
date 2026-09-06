@@ -1,0 +1,74 @@
+{
+  "_standalone": false,
+  "cat-0-item-0": {
+    "price": 240000,
+    "soldOut": false,
+    "isNew": false,
+    "newAt": 1787500589942,
+    "description": "اسپرسو دبل ۱۰۰٪ عربیکا تخصصی همراه با آب و یخ، با طعم‌یادهای ملایم و دلپذیر."
+  },
+  "cat-0-item-1": {
+    "price": 160000,
+    "soldOut": true,
+    "isNew": false
+  },
+  "_categoryOrder": [
+    1,
+    0,
+    2,
+    3,
+    4,
+    5,
+    6,
+    7,
+    8,
+    9,
+    10,
+    11,
+    12,
+    13,
+    14
+  ],
+  "cat-0-item-2": {
+    "price": 200000,
+    "soldOut": false,
+    "isNew": false,
+    "newAt": 1787658396145,
+    "description": "اسپرسو دبل ۱۰۰٪ عربیکا همراه با آب و یخ، با طعم‌یادهای ملایم و دلپذیر."
+  },
+  "cat-1-item-0": {
+    "price": 230000,
+    "soldOut": false,
+    "isNew": true,
+    "newAt": 1787500600258
+  },
+  "cat-2-item-3": {
+    "price": 155000,
+    "soldOut": true,
+    "description": "عطر دلپذیر هل در کنار چای، تجربه‌ای گرم و خاطره‌انگیز.",
+    "isNew": false
+  },
+  "cat-0-item-3": {
+    "price": 180000,
+    "soldOut": false,
+    "description": "ترکیب متعادل اسپرسو ۵۰-۵۰ (بلند) همراه با آب و یخ، انتخابی ایده‌آل برای همراهی در طول روز.",
+    "isNew": true,
+    "newAt": 1787643294794
+  },
+  "cat-4-item-1": {
+    "price": 190000,
+    "soldOut": false,
+    "description": "ترکیبی از نارگیل، رام، شکر قهوه‌ای و رزماری با سیروپ تخم‌شربتی، بهارنارنج و لیموناد، سرو شده با یخ فراوان و تاپ سودا و گارنیش بهارنارنج خشک.",
+    "isNew": true,
+    "newAt": 1787643302494
+  },
+  "_categories": {
+    "0": {
+      "station": "bar",
+      "icon": "assets/category/coffee.png"
+    },
+    "1": {
+      "station": "bar"
+    }
+  }
+}

@@ -6,7 +6,6 @@ import {
   cashierHeaders,
   getCashierToken,
   isAlertMuted,
-  sandboxHeaders,
   streamUrl,
 } from "@/lib/api";
 import type { Invoice, Order, Reservation, TablesPayload } from "@/lib/types";
@@ -108,7 +107,7 @@ export function useOrdersLive(enabled: boolean) {
   }, []);
 
   const fetchOnce = useCallback(async () => {
-    const res = await fetch(apiUrl("/api/orders"), { headers: sandboxHeaders() });
+    const res = await fetch(apiUrl("/api/orders"), { headers: cashierHeaders() });
     if (!res.ok) throw new Error("orders");
     const data = (await res.json()) as TablesPayload;
     setSync("live");

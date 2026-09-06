@@ -1,9 +1,22 @@
 RewriteEngine On
 RewriteBase /
 
+# Platform home — SaaS landing (miiziito.ir/)
+RewriteRule ^$ index.html [L]
+
+# Neon PostgreSQL (production — do not commit this file to public GitHub)
+SetEnv MIIZIITO_DATABASE_URL "postgresql://neondb_owner:npg_L5GUg6SevthR@ep-falling-frog-ae2morog-pooler.c-2.us-east-2.aws.neon.tech/neondb?sslmode=require"
+
 <IfModule LiteSpeed>
 RewriteRule ^api/orders/stream - [E=noabort:1]
 </IfModule>
+
+# Cafe cashier panel: /{slug}/admin/
+RewriteRule ^([a-z0-9-]+)/admin/?$ _/admin/index.html [L]
+
+# Cafe menus: /{slug}/ → client shell (slug read in browser)
+RewriteRule ^(admin|panel-admin|api|assets|_next|uploads|data|404|favicon\.ico|robots\.txt|_)(/|$) - [L,NC]
+RewriteRule ^([a-z0-9-]+)/?$ _/index.html [L]
 
 RewriteRule ^api/health/?$ api/index.php?route=health [L,QSA]
 RewriteRule ^api/orders/stream/?$ api/index.php?route=stream [L,QSA]

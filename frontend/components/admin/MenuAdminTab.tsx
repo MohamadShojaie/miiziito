@@ -25,6 +25,7 @@ type DraftCategoryPatch = {
   clearIcon?: boolean;
 };
 import { apiJson, cashierHeaders } from "@/lib/api";
+import { getMenuTenantSlug } from "@/lib/tenant";
 import { useToast } from "@/components/ToastProvider";
 import { LoadingShimmer } from "@/components/admin/LoadingShimmer";
 
@@ -100,6 +101,20 @@ export function MenuAdminTab() {
   const [draftPatches, setDraftPatches] = useState<
     Record<number, DraftCategoryPatch>
   >({});
+  const [newCategoryName, setNewCategoryName] = useState("");
+  const [newCategoryIcon, setNewCategoryIcon] = useState(
+    CATEGORY_ICON_PRESETS[0]?.path || "assets/category/coffee.png"
+  );
+  const [addCategoryOpen, setAddCategoryOpen] = useState(false);
+  const [categoryBusy, setCategoryBusy] = useState(false);
+  const [newItemName, setNewItemName] = useState("");
+  const [newItemPrice, setNewItemPrice] = useState("");
+  const [itemBusy, setItemBusy] = useState(false);
+  const [addItemOpen, setAddItemOpen] = useState(false);
+  const [deleteCategoryBusy, setDeleteCategoryBusy] = useState(false);
+
+  const defaultCategoryIcon =
+    CATEGORY_ICON_PRESETS[0]?.path || "assets/category/coffee.png";
 
   const categories = useMemo(
     () => buildCustomerCategories(overrides),
@@ -125,7 +140,10 @@ export function MenuAdminTab() {
   }, []);
 
   useEffect(() => {
-    if (!categories.length) return;
+    if (!categories.length) {
+      setActiveCi(null);
+      return;
+    }
     if (activeCi != null && categories.some((c) => c.ci === activeCi)) return;
     setActiveCi(categories[0].ci);
   }, [categories, activeCi]);
@@ -166,6 +184,28 @@ export function MenuAdminTab() {
     return () => document.removeEventListener("keydown", onKey);
   }, [selected]);
 
+  useEffect(() => {
+    if (!addCategoryOpen) return;
+    function onKey(e: KeyboardEvent) {
+      if (e.key === "Escape" && !categoryBusy) closeAddCategory();
+    }
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, [addCategoryOpen, categoryBusy]);
+
+  function openAddCategory() {
+    setNewCategoryName("");
+    setNewCategoryIcon(defaultCategoryIcon);
+    setAddCategoryOpen(true);
+  }
+
+  function closeAddCategory() {
+    if (categoryBusy) return;
+    setAddCategoryOpen(false);
+    setNewCategoryName("");
+    setNewCategoryIcon(defaultCategoryIcon);
+  }
+
   function openItem(item: MenuItem, categoryName: string) {
     const id = item.id || item.name;
     setSelected({
@@ -179,6 +219,118 @@ export function MenuAdminTab() {
     setDraftClearImage(false);
     setDraftSoldOut(!!item.soldOut);
     setDraftIsNew(item.isNew === true);
+  }
+
+  async function addCategory() {
+    const name = newCategoryName.trim();
+    if (!name) {
+      showToast("نام دسته را وارد کنید");
+      return;
+    }
+    setCategoryBusy(true);
+    try {
+      const data = await apiJson<{ overrides?: MenuOverrides; categoryIndex?: number }>(
+        "/api/menu",
+        {
+          method: "POST",
+          headers: cashierHeaders(),
+          body: JSON.stringify({
+            action: "addCategory",
+            name,
+            icon: newCategoryIcon || defaultCategoryIcon,
+          }),
+        }
+      );
+      if (
+        !data.overrides ||
+        typeof data.categoryIndex !== "number" ||
+        !data.overrides._addedCategories?.[String(data.categoryIndex)]
+      ) {
+        showToast("افزودن دسته ناموفق بود — سرور API را ری‌استارت کنید");
+        return;
+      }
+      setOverrides(data.overrides);
+      setActiveCi(data.categoryIndex);
+      closeAddCategory();
+      showToast("دسته اضافه شد");
+    } catch {
+      showToast("افزودن دسته ناموفق بود");
+    } finally {
+      setCategoryBusy(false);
+    }
+  }
+
+  async function addItem() {
+    if (activeCi == null) {
+      showToast("ابتدا یک دسته بسازید");
+      return;
+    }
+    const name = newItemName.trim();
+    if (!name) {
+      showToast("نام آیتم را وارد کنید");
+      return;
+    }
+    const price = Math.max(0, Math.round(Number(newItemPrice) || 0));
+    setItemBusy(true);
+    try {
+      const data = await apiJson<{ overrides?: MenuOverrides; id?: string }>("/api/menu", {
+        method: "POST",
+        headers: cashierHeaders(),
+        body: JSON.stringify({
+          action: "add",
+          categoryIndex: activeCi,
+          name,
+          price,
+        }),
+      });
+      if (!data.overrides || !data.id) {
+        showToast("افزودن آیتم ناموفق بود — سرور API را ری‌استارت کنید");
+        return;
+      }
+      setOverrides(data.overrides);
+      setNewItemName("");
+      setNewItemPrice("");
+      setAddItemOpen(false);
+      showToast("آیتم اضافه شد");
+    } catch {
+      showToast("افزودن آیتم ناموفق بود");
+    } finally {
+      setItemBusy(false);
+    }
+  }
+
+  async function deleteCategory(ci: number, name: string) {
+    const custom = ci >= 1000;
+    const msg = custom
+      ? `دسته «${name}» و همه آیتم‌هایش حذف شوند؟`
+      : `دسته «${name}» از منو حذف شود؟`;
+    if (!window.confirm(msg)) return;
+    setDeleteCategoryBusy(true);
+    try {
+      const data = await apiJson<{ overrides?: MenuOverrides }>("/api/menu", {
+        method: "POST",
+        headers: cashierHeaders(),
+        body: JSON.stringify({
+          action: "deleteCategory",
+          categoryIndex: ci,
+        }),
+      });
+      const key = String(ci);
+      const removed = custom
+        ? !data.overrides?._addedCategories?.[key]
+        : data.overrides?._categories?.[key]?.deleted === true;
+      if (!data.overrides || !removed) {
+        showToast("حذف دسته ناموفق بود — سرور API را ری‌استارت کنید");
+        return;
+      }
+      setOverrides(data.overrides);
+      setAddItemOpen(false);
+      showToast("دسته حذف شد");
+    } catch {
+      showToast("حذف دسته ناموفق بود");
+    } finally {
+      setDeleteCategoryBusy(false);
+    }
   }
 
   function handlePhotoSelect(e: React.ChangeEvent<HTMLInputElement>) {
@@ -458,24 +610,34 @@ export function MenuAdminTab() {
       <>
       <section className="menu-admin-toolbar">
         <div className="menu-admin-toolbar-row">
-          <div className="menu-admin-search">
-            <input
-              type="search"
-              className="menu-admin-search-input"
-              placeholder="جستجوی آیتم در این دسته…"
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-            />
-          </div>
+          {categories.length ? (
+            <div className="menu-admin-search">
+              <input
+                type="search"
+                className="menu-admin-search-input"
+                placeholder="جستجوی آیتم در این دسته…"
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+              />
+            </div>
+          ) : null}
+          <button
+            type="button"
+            className="cp-btn cp-btn--primary menu-admin-add-btn"
+            onClick={openAddCategory}
+          >
+            + افزودن دسته
+          </button>
           <button
             type="button"
             className="cp-btn cp-btn--ghost menu-admin-reorder-btn"
-            disabled={!loaded || categories.length < 2}
+            disabled={!loaded || categories.length < 1}
             onClick={openReorder}
           >
             تنظیم دسته‌ها
           </button>
         </div>
+        {categories.length ? (
         <div
           className="menu-admin-cats"
           role="tablist"
@@ -500,21 +662,95 @@ export function MenuAdminTab() {
             </button>
           ))}
         </div>
+        ) : null}
       </section>
 
       <section className="menu-admin-panel" aria-live="polite">
+        {!categories.length ? (
+          <div className="menu-admin-empty">
+            <p>هنوز دسته‌ای در منو نیست.</p>
+            <p style={{ fontSize: "0.85rem", fontWeight: 500, marginTop: "0.5rem" }}>
+              با «افزودن دسته» شروع کنید، سپس آیتم اضافه کنید.
+            </p>
+            <button
+              type="button"
+              className="cp-btn cp-btn--primary"
+              style={{ marginTop: "1rem" }}
+              onClick={openAddCategory}
+            >
+              + افزودن دسته
+            </button>
+          </div>
+        ) : (
+        <>
         <div className="menu-admin-panel-head">
           <h4 className="menu-admin-panel-title">
-            {activeCategory?.name || (loaded ? "—" : "در حال بارگذاری…")}
+            {activeCategory?.name || "—"}
           </h4>
-          <p className="menu-admin-panel-hint">
-            برای ویرایش، روی آیتم بزنید
-          </p>
+          <div className="menu-admin-panel-actions">
+            <button
+              type="button"
+              className="cp-btn cp-btn--primary cp-btn--sm"
+              disabled={deleteCategoryBusy}
+              onClick={() => setAddItemOpen((v) => !v)}
+            >
+              {addItemOpen ? "بستن" : "+ افزودن آیتم"}
+            </button>
+            {activeCategory ? (
+              <button
+                type="button"
+                className="cp-btn cp-btn--ghost cp-btn--sm is-danger"
+                disabled={deleteCategoryBusy}
+                onClick={() =>
+                  void deleteCategory(activeCategory.ci, activeCategory.name)
+                }
+              >
+                {deleteCategoryBusy ? "…" : "حذف دسته"}
+              </button>
+            ) : null}
+            <p className="menu-admin-panel-hint">
+              برای ویرایش، روی آیتم بزنید
+            </p>
+          </div>
         </div>
+
+        {addItemOpen ? (
+          <div className="menu-admin-add-row menu-admin-add-item">
+            <input
+              type="text"
+              className="menu-admin-search-input menu-admin-add-input"
+              placeholder="نام آیتم…"
+              value={newItemName}
+              disabled={itemBusy}
+              onChange={(e) => setNewItemName(e.target.value)}
+            />
+            <input
+              type="text"
+              inputMode="numeric"
+              className="menu-admin-search-input menu-admin-add-input menu-admin-add-price"
+              placeholder="قیمت (تومان)"
+              value={newItemPrice}
+              disabled={itemBusy}
+              onChange={(e) => setNewItemPrice(e.target.value.replace(/[^\d]/g, ""))}
+            />
+            <button
+              type="button"
+              className="cp-btn cp-btn--primary menu-admin-add-btn"
+              disabled={itemBusy}
+              onClick={() => void addItem()}
+            >
+              {itemBusy ? "…" : "ذخیره آیتم"}
+            </button>
+          </div>
+        ) : null}
 
         {visibleItems.length === 0 ? (
           <div className="menu-admin-empty">
-            <p>آیتمی در این دسته پیدا نشد.</p>
+            <p>
+              {query.trim()
+                ? "آیتمی در این دسته پیدا نشد."
+                : "هنوز آیتمی در این دسته نیست — «افزودن آیتم» را بزنید."}
+            </p>
           </div>
         ) : (
           <ul className="menu-admin-list">
@@ -567,6 +803,8 @@ export function MenuAdminTab() {
               );
             })}
           </ul>
+        )}
+        </>
         )}
       </section>
 
@@ -731,6 +969,113 @@ export function MenuAdminTab() {
             </div>
               );
             })(),
+            document.body
+          )
+        : null}
+
+      {addCategoryOpen
+        ? createPortal(
+            <div
+              className="table-glass-overlay"
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby="menu-add-category-title"
+              onClick={() => closeAddCategory()}
+            >
+              <div
+                className="table-glass-dialog menu-glass-dialog menu-add-category-dialog"
+                onClick={(e) => e.stopPropagation()}
+              >
+                <header className="table-glass-head">
+                  <div>
+                    <h4 id="menu-add-category-title" className="table-glass-title">
+                      دسته جدید
+                    </h4>
+                    <p className="table-glass-sub">
+                      نام و آیکون دسته را وارد کنید
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    className="table-glass-close"
+                    aria-label="بستن"
+                    disabled={categoryBusy}
+                    onClick={() => closeAddCategory()}
+                  >
+                    ×
+                  </button>
+                </header>
+
+                <form
+                  className="menu-add-category-form"
+                  onSubmit={(e) => {
+                    e.preventDefault();
+                    void addCategory();
+                  }}
+                >
+                  <section className="menu-glass-section">
+                    <label className="menu-add-category-field">
+                      <span className="table-glass-label">نام دسته</span>
+                      <input
+                        type="text"
+                        className="menu-admin-search-input"
+                        placeholder="مثلاً قهوه، نوشیدنی سرد…"
+                        value={newCategoryName}
+                        disabled={categoryBusy}
+                        autoFocus
+                        onChange={(e) => setNewCategoryName(e.target.value)}
+                      />
+                    </label>
+                  </section>
+
+                  <section className="menu-glass-section">
+                    <span className="table-glass-label">آیکون دسته</span>
+                    <div className="menu-add-category-icon-row">
+                      <span
+                        className="menu-add-category-icon-preview"
+                        aria-hidden="true"
+                      >
+                        {newCategoryIcon ? (
+                          // eslint-disable-next-line @next/next/no-img-element
+                          <img src={assetUrl(newCategoryIcon) || newCategoryIcon} alt="" />
+                        ) : null}
+                      </span>
+                      <select
+                        className="menu-reorder-preset menu-add-category-icon-select"
+                        disabled={categoryBusy}
+                        value={newCategoryIcon}
+                        aria-label="آیکون دسته"
+                        onChange={(e) => setNewCategoryIcon(e.target.value)}
+                      >
+                        {CATEGORY_ICON_PRESETS.map((p) => (
+                          <option key={p.path} value={p.path}>
+                            {p.label}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  </section>
+
+                  <footer className="menu-glass-actions">
+                    <button
+                      type="submit"
+                      className={`orders-primary-btn${categoryBusy ? " is-loading" : ""}`}
+                      disabled={categoryBusy}
+                    >
+                      {categoryBusy ? "در حال ذخیره…" : "ذخیره دسته"}
+                    </button>
+                    <button
+                      type="button"
+                      className="cp-btn cp-btn--ghost"
+                      disabled={categoryBusy}
+                      onClick={() => closeAddCategory()}
+                    >
+                      انصراف
+                    </button>
+                  </footer>
+                </form>
+              </div>
+            </div>,
             document.body
           )
         : null}

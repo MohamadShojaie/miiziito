@@ -14,6 +14,8 @@ const STATUS_FA: Record<string, string> = {
   failed: "ناموفق",
   refunded: "استرداد",
   contacted: "تماس گرفته شد",
+  awaiting_payment: "منتظر پرداخت",
+  payment_submitted: "پرداخت ثبت شد",
   fulfilled: "انجام شده",
   rejected: "رد شده",
   open: "باز",

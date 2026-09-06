@@ -20,19 +20,31 @@ export type CafeStatus =
   | "cancelled"
   | "pending";
 
+export type CafeSettings = {
+  cashierPassword?: string;
+  hasCashierPassword?: boolean;
+};
+
+export type CafeCashierAuth = {
+  hasPassword: boolean;
+};
+
 export type Cafe = {
   id: string;
   name: string;
+  slug?: string;
   ownerName: string;
   email: string;
   phone: string;
   status: CafeStatus;
   planId?: string | null;
   subscriptionId?: string | null;
+  settings?: CafeSettings;
   usage?: Record<string, number>;
   lastActivityAt?: string | null;
   createdAt: string;
   updatedAt: string;
+  cashierAuth?: CafeCashierAuth;
 };
 
 export type Plan = {
@@ -100,10 +112,17 @@ export type PageResult<T> = {
 export type SupportTicket = {
   id: string;
   tenantId?: string;
+  cafeName?: string;
+  cafeOwnerEmail?: string;
   subject: string;
   priority: string;
   status: string;
   assignedAdminId?: string;
+  needsAdminReply?: boolean;
+  isNew?: boolean;
+  lastMessageFrom?: string | null;
+  attentionRank?: number;
+  adminReadAt?: string | null;
   messages?: { id: string; from: string; body: string; createdAt: string }[];
   createdAt: string;
   updatedAt: string;

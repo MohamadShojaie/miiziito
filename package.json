@@ -1,4 +1,11 @@
 {
+  "name": "miiziito",
+  "private": true,
+  "scripts": {
+    "dev": "npm run dev --prefix frontend",
+    "dev:php": "node scripts/dev-php.mjs",
+    "deploy": "node scripts/build-parspack.mjs"
+  },
   "dependencies": {
     "qrcode": "^1.5.4"
   },

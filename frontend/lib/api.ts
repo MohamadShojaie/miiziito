@@ -1,4 +1,5 @@
 import { SITE_CONFIG } from "./config";
+import { getMenuTenantSlug, tenantApiHeaders } from "./tenant";
 
 const TOKEN_KEY = "miiziito-cashier-token";
 const ROLE_KEY = "miiziito-cashier-role";
@@ -6,6 +7,21 @@ const SANDBOX_KEY = "miiziito-dev-sandbox";
 const MUTE_KEY = "miiziito-alert-muted";
 const QUEUE_KEY = "miiziito-pending-orders";
 const CART_KEY = "miiziito-wanted";
+
+function cashierTokenKey(slug?: string): string {
+  const tenant = slug || getMenuTenantSlug();
+  return tenant ? `${TOKEN_KEY}:${tenant}` : TOKEN_KEY;
+}
+
+function cashierRoleKey(slug?: string): string {
+  const tenant = slug || getMenuTenantSlug();
+  return tenant ? `${ROLE_KEY}:${tenant}` : ROLE_KEY;
+}
+
+function cashierSandboxKey(slug?: string): string {
+  const tenant = slug || getMenuTenantSlug();
+  return tenant ? `${SANDBOX_KEY}:${tenant}` : SANDBOX_KEY;
+}
 
 function getBase() {
   return String(SITE_CONFIG.apiUrl || "").replace(/\/$/, "");
@@ -45,47 +61,48 @@ export function apiUrl(path: string): string {
   return base + path;
 }
 
-export function getCashierToken(): string {
+export function getCashierToken(slug?: string): string {
   if (typeof window === "undefined") return "";
   try {
-    return localStorage.getItem(TOKEN_KEY) || "";
+    return localStorage.getItem(cashierTokenKey(slug)) || "";
   } catch {
     return "";
   }
 }
 
-export function setCashierToken(token: string) {
+export function setCashierToken(token: string, slug?: string) {
   if (typeof window === "undefined") return;
-  if (token) localStorage.setItem(TOKEN_KEY, token);
-  else localStorage.removeItem(TOKEN_KEY);
+  const key = cashierTokenKey(slug);
+  if (token) localStorage.setItem(key, token);
+  else localStorage.removeItem(key);
 }
 
-export function getCashierRole(): string {
+export function getCashierRole(slug?: string): string {
   if (typeof window === "undefined") return "";
   try {
-    return localStorage.getItem(ROLE_KEY) || "";
+    return localStorage.getItem(cashierRoleKey(slug)) || "";
   } catch {
     return "";
   }
 }
 
-export function getSandboxId(): string {
+export function getSandboxId(slug?: string): string {
   if (typeof window === "undefined") return "dev";
   try {
-    return localStorage.getItem(SANDBOX_KEY) || "dev";
+    return localStorage.getItem(cashierSandboxKey(slug)) || "dev";
   } catch {
     return "dev";
   }
 }
 
-export function setCashierRole(role: string, sandbox = "dev") {
+export function setCashierRole(role: string, sandbox = "dev", slug?: string) {
   if (typeof window === "undefined") return;
-  localStorage.setItem(ROLE_KEY, role);
-  localStorage.setItem(SANDBOX_KEY, sandbox || "dev");
+  localStorage.setItem(cashierRoleKey(slug), role);
+  localStorage.setItem(cashierSandboxKey(slug), sandbox || "dev");
 }
 
-export function isDevMode(): boolean {
-  return getCashierRole() === "dev";
+export function isDevMode(slug?: string): boolean {
+  return getCashierRole(slug) === "dev";
 }
 
 export function isAlertMuted(): boolean {
@@ -103,22 +120,33 @@ export function setAlertMuted(muted: boolean) {
 }
 
 export function cashierHeaders(extra?: HeadersInit): HeadersInit {
-  const headers: Record<string, string> = {
-    "Content-Type": "application/json",
-  };
+  const headers = tenantApiHeaders(extra) as Record<string, string>;
+  headers["Content-Type"] = "application/json";
   const token = getCashierToken();
   if (token) headers["X-Cashier-Token"] = token;
-  if (isDevMode()) headers["X-Miiziito-Sandbox"] = getSandboxId() || "dev";
-  if (extra) Object.assign(headers, extra);
+  if (isDevMode() && !getMenuTenantSlug()) {
+    headers["X-Miiziito-Sandbox"] = getSandboxId() || "dev";
+  }
   return headers;
 }
 
 export function sandboxHeaders(extra?: HeadersInit): HeadersInit {
-  const headers: Record<string, string> = {};
-  if (isDevMode()) headers["X-Miiziito-Sandbox"] = getSandboxId() || "dev";
+  const headers = tenantApiHeaders(extra) as Record<string, string>;
+  if (!getMenuTenantSlug() && isDevMode()) {
+    headers["X-Miiziito-Sandbox"] = getSandboxId() || "dev";
+  }
   const token = getCashierToken();
   if (token) headers["X-Cashier-Token"] = token;
-  if (extra) Object.assign(headers, extra);
+  return headers;
+}
+
+export function menuHeaders(extra?: HeadersInit): HeadersInit {
+  const headers = tenantApiHeaders(extra) as Record<string, string>;
+  if (!getMenuTenantSlug() && isDevMode()) {
+    headers["X-Miiziito-Sandbox"] = getSandboxId() || "dev";
+  }
+  const token = getCashierToken();
+  if (token) headers["X-Cashier-Token"] = token;
   return headers;
 }
 
@@ -131,7 +159,10 @@ export async function apiJson<T = unknown>(
       ? cashierHeaders(init?.headers)
       : init?.sandbox
         ? sandboxHeaders(init?.headers)
-        : { "Content-Type": "application/json", ...(init?.headers as object) };
+        : (tenantApiHeaders(init?.headers) as Record<string, string>);
+  if (init?.auth === false && !init?.sandbox) {
+    (headers as Record<string, string>)["Content-Type"] = "application/json";
+  }
   const res = await fetch(apiUrl(path), { ...init, headers });
   const data = await res.json().catch(() => ({}));
   if (!res.ok) {
@@ -176,6 +207,10 @@ export function streamUrl(mode: "sse" | "poll", since = 0): string {
   let url = apiUrl("/api/orders/stream");
   const join = url.includes("?") ? "&" : "?";
   url += `${join}token=${encodeURIComponent(token || "")}`;
+  const slug = getMenuTenantSlug();
+  if (slug) {
+    url += `&tenant=${encodeURIComponent(slug)}`;
+  }
   if (mode === "poll") {
     url += `&mode=poll&since=${encodeURIComponent(String(since || 0))}`;
   }

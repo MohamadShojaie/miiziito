@@ -7,6 +7,7 @@ import type {
   PaymentResult,
   PaymentTerminal,
   ProviderMeta,
+  TerminalConnectionType,
   TestResult,
 } from "./payment-types";
 import { newPaymentId } from "./payment-types";
@@ -64,17 +65,107 @@ export async function testTerminalConnection(
   });
 }
 
-export async function discoverTerminals(payload: {
-  connectionType?: string;
-  provider?: string;
-  subnet?: string;
+export type DiscoveredTerminal = {
+  id: string;
+  name?: string;
+  label?: string;
+  connectionType: TerminalConnectionType;
   host?: string;
-  port?: number;
-}): Promise<{ devices?: unknown[]; message?: string; ok?: boolean }> {
-  return apiJson("/api/payment-agent", {
+  port?: string | number;
+  serialPort?: string;
+  baudRate?: number;
+  bluetoothIdentifier?: string;
+  status?: string;
+  provider?: string;
+  note?: string;
+  likelyPos?: boolean;
+};
+
+export type DiscoverTerminalsResult = {
+  ok?: boolean;
+  type?: string;
+  localIp?: string;
+  subnet?: string;
+  scanned?: number;
+  devices?: DiscoveredTerminal[];
+  message?: string;
+};
+
+export type PosDiscoveryKind = "network" | "usb" | "serial" | "bluetooth";
+
+export async function discoverTerminals(
+  connectionType: PosDiscoveryKind,
+  opts?: { provider?: string; host?: string; port?: number }
+): Promise<DiscoverTerminalsResult> {
+  return apiJson<DiscoverTerminalsResult>("/api/payment-agent", {
     method: "POST",
     ...auth(),
-    body: JSON.stringify({ action: "discover", ...payload }),
+    body: JSON.stringify({
+      action: "discover",
+      connectionType,
+      ...opts,
+    }),
+  });
+}
+
+export function discoveredToTerminalDraft(
+  found: DiscoveredTerminal,
+  provider = "generic"
+): Partial<PaymentTerminal> & {
+  name: string;
+  provider: string;
+  connectionType: TerminalConnectionType;
+} {
+  const connectionType = found.connectionType || "network";
+  const host = found.host || "";
+  const port =
+    connectionType === "network"
+      ? String(found.port || "")
+      : "";
+  return {
+    name: found.name || found.label || "پایانه پرداخت",
+    provider: found.provider || provider,
+    model: "",
+    connectionType,
+    host,
+    port,
+    protocol: "tcp",
+    serialPort: found.serialPort || "",
+    baudRate: 9600,
+    bluetoothIdentifier: found.bluetoothIdentifier || "",
+    stationId: "",
+    isActive: true,
+    isDefault: false,
+    configuration: {},
+  };
+}
+
+export async function testDiscoveredTerminal(
+  terminal: Partial<PaymentTerminal> | DiscoveredTerminal
+): Promise<TestResult> {
+  const conn =
+    "connectionType" in terminal && terminal.connectionType
+      ? terminal.connectionType
+      : "network";
+  const baud =
+    "baudRate" in terminal && terminal.baudRate != null ? terminal.baudRate : 9600;
+  const body: Record<string, unknown> = {
+    action: "test",
+    terminal: {
+      provider: terminal.provider || "generic",
+      connectionType: conn,
+      host: terminal.host || "",
+      port: terminal.port ?? "",
+      serialPort: terminal.serialPort || "",
+      baudRate: baud,
+      bluetoothIdentifier: terminal.bluetoothIdentifier || "",
+      isActive: true,
+    },
+  };
+  return apiJson<TestResult>("/api/payment-agent", {
+    method: "POST",
+    ...auth(),
+    body: JSON.stringify(body),
   });
 }
 

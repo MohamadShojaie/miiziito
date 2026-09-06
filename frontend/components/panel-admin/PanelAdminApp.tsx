@@ -65,9 +65,22 @@ function LoginGate({
   onCafe: (o: CafeOwner) => void;
 }) {
   useEffect(() => {
-    if (kind === "admin") navigate("/panel-admin/manage/");
-    if (kind === "cafe") navigate("/panel-admin/account/");
-  }, [kind, navigate]);
+    if (kind === "admin") {
+      window.location.assign("/panel-admin/manage/");
+      return;
+    }
+    if (kind === "cafe") {
+      const params = new URLSearchParams(window.location.search);
+      const plan = params.get("plan");
+      const cycle = params.get("cycle");
+      let href = "/panel-admin/account/";
+      if (plan) {
+        href += `?plan=${encodeURIComponent(plan)}`;
+        if (cycle) href += `&cycle=${encodeURIComponent(cycle)}`;
+      }
+      window.location.assign(href);
+    }
+  }, [kind]);
   if (kind === "admin" || kind === "cafe") {
     return (
       <div className="sa-login">
@@ -98,7 +111,7 @@ function parseRoute(pathname: string, search: string) {
   const plan = params.get("plan") || "";
   const cycle = params.get("cycle") || "";
 
-  if (path === "/panel-admin/") return { name: "store" as const };
+  if (path === "/" || path === "/panel-admin/") return { name: "store" as const };
   if (path === "/panel-admin/login/") return { name: "login" as const };
   if (path === "/panel-admin/register/") return { name: "register" as const };
   if (path === "/panel-admin/account/") return { name: "account" as const, plan, cycle };
@@ -165,9 +178,20 @@ function readCachedSession(): { kind: SessionKind; admin: AdminUser | null; owne
   return { kind: null, admin: null, owner: null };
 }
 
+function initialPath(): string {
+  if (typeof window === "undefined") return "";
+  return normalizePath(window.location.pathname);
+}
+
+function initialSearch(): string {
+  if (typeof window === "undefined") return "";
+  return window.location.search || "";
+}
+
 export function PanelAdminApp() {
-  const [path, setPath] = useState("/panel-admin/");
-  const [search, setSearch] = useState("");
+  const [path, setPath] = useState(initialPath);
+  const [search, setSearch] = useState(initialSearch);
+  const [locationReady, setLocationReady] = useState(() => typeof window !== "undefined");
   const [kind, setKind] = useState<SessionKind>(null);
   const [admin, setAdmin] = useState<AdminUser | null>(null);
   const [owner, setOwner] = useState<CafeOwner | null>(null);
@@ -195,6 +219,7 @@ export function PanelAdminApp() {
 
   useEffect(() => {
     syncLocation();
+    setLocationReady(true);
     const onPop = () => syncLocation();
     window.addEventListener("popstate", onPop);
     return () => window.removeEventListener("popstate", onPop);
@@ -272,12 +297,12 @@ export function PanelAdminApp() {
     setKind(null);
     setAdmin(null);
     setOwner(null);
-    navigate("/panel-admin/");
+    window.location.assign("/");
   }
 
   const route = useMemo(() => parseRoute(path, search), [path, search]);
 
-  if (booting) {
+  if (!locationReady || booting) {
     return (
       <div className="sa-root sa-rtl">
         <div className="sa-login">
@@ -287,13 +312,20 @@ export function PanelAdminApp() {
     );
   }
 
-  // Public store — always available
+  // Only redirect bare /panel-admin/ after we know the real browser path (not SSR/hydration default).
+  if (path === "/panel-admin/") {
+    return (
+      <div className="sa-root sa-rtl">
+        <RedirectTo href="/" navigate={(h) => { window.location.replace(h); }} />
+      </div>
+    );
+  }
+
   if (route.name === "store") {
     return (
       <div className="sa-root sa-rtl">
         <ToastHost>
           <StorePage
-            onNavigate={navigate}
             isLoggedIn={kind !== null}
             kind={kind}
           />
@@ -314,7 +346,7 @@ export function PanelAdminApp() {
               setKind("admin");
               setAdmin(a);
               setOwner(null);
-              navigate("/panel-admin/manage/");
+              window.location.assign("/panel-admin/manage/");
             }}
             onCafe={(o) => {
               setKind("cafe");
@@ -328,7 +360,7 @@ export function PanelAdminApp() {
                 href += `?plan=${encodeURIComponent(plan)}`;
                 if (cycle) href += `&cycle=${encodeURIComponent(cycle)}`;
               }
-              navigate(href);
+              window.location.assign(href);
             }}
           />
         </ToastHost>
@@ -338,10 +370,18 @@ export function PanelAdminApp() {
 
   if (route.name === "account") {
     if (kind !== "cafe") {
+      const params = new URLSearchParams(search);
+      const plan = params.get("plan");
+      const cycle = params.get("cycle");
+      let loginHref = "/panel-admin/login/?next=account";
+      if (plan) {
+        loginHref += `&plan=${encodeURIComponent(plan)}`;
+        if (cycle) loginHref += `&cycle=${encodeURIComponent(cycle)}`;
+      }
       return (
         <div className="sa-root sa-rtl">
           <ToastHost>
-            <RedirectTo href="/panel-admin/login/?next=account" navigate={navigate} />
+            <RedirectTo href={loginHref} navigate={navigate} />
           </ToastHost>
         </div>
       );

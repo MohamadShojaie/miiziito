@@ -5,6 +5,7 @@
 
 # Secrets
 data/secret.php
+data/db.local.php
 
 # Dependencies & build output
 node_modules/

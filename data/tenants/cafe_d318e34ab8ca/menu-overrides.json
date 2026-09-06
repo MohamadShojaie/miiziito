@@ -1,0 +1,66 @@
+{
+  "_standalone": true,
+  "_added": {
+    "cat-1000-custom-09707d8a11": {
+      "categoryIndex": 1000,
+      "name": "لیموناد",
+      "description": "",
+      "price": 180000.0,
+      "soldOut": false,
+      "toppings": [],
+      "isNew": true,
+      "createdAt": 1788530334434,
+      "newAt": 1788530334434
+    },
+    "cat-1000-custom-a281420994": {
+      "categoryIndex": 1000,
+      "name": "موهیتو",
+      "description": "",
+      "price": 195000.0,
+      "soldOut": false,
+      "toppings": [],
+      "isNew": true,
+      "createdAt": 1788530351284,
+      "newAt": 1788530351284
+    },
+    "cat-1001-custom-e39f5eda6b": {
+      "categoryIndex": 1001,
+      "name": "تیرامیسو",
+      "description": "",
+      "price": 145000.0,
+      "soldOut": false,
+      "toppings": [],
+      "isNew": true,
+      "createdAt": 1788530386484,
+      "newAt": 1788530386484
+    },
+    "cat-1001-custom-71b7746f9f": {
+      "categoryIndex": 1001,
+      "name": "روز",
+      "description": "",
+      "price": 160000.0,
+      "soldOut": false,
+      "toppings": [],
+      "isNew": true,
+      "createdAt": 1788530399047,
+      "newAt": 1788530399047
+    }
+  },
+  "_addedCategories": {
+    "1000": {
+      "name": "نوشیدنی سرد",
+      "hidden": false,
+      "icon": "assets/category/ice-drinke.png"
+    },
+    "1001": {
+      "name": "کیک",
+      "hidden": false,
+      "icon": "assets/category/bakery.png"
+    }
+  },
+  "_categories": {},
+  "_categoryOrder": [
+    1000,
+    1001
+  ]
+}

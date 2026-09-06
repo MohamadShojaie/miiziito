@@ -66,6 +66,11 @@ _SANDBOX_FILENAMES = {
     "reservations.json",
 }
 
+_TENANT_FILENAMES = _SANDBOX_FILENAMES | {
+    "settings.json",
+    "sessions.json",
+}
+
 try:
     from printer import (
         capabilities as printer_capabilities,
@@ -141,10 +146,38 @@ except Exception as _payment_import_err:  # pragma: no cover
     print(f"[api] payment module unavailable: {_payment_import_err}")
 
 try:
-    from super_admin import handle as sa_handle
+    import super_admin as _super_admin_mod
+    sa_handle = _super_admin_mod.handle
 except Exception as _sa_import_err:  # pragma: no cover
+    _super_admin_mod = None
     sa_handle = None
     print(f"[api] super_admin module unavailable: {_sa_import_err}")
+
+try:
+    from tenant_slug import (
+        find_cafe_by_slug,
+        is_cafe_live,
+        provision_tenant,
+        request_tenant_slug,
+        verify_tenant_cashier_password,
+    )
+except Exception as _tenant_import_err:  # pragma: no cover
+    find_cafe_by_slug = None
+    is_cafe_live = None
+    provision_tenant = None
+    request_tenant_slug = None
+    verify_tenant_cashier_password = None
+    print(f"[api] tenant_slug module unavailable: {_tenant_import_err}")
+
+
+def _sa_handle(method, route, item_id, body, qs, headers):
+    """Reload super_admin in dev so panel API changes apply without restart."""
+    if _super_admin_mod is None:
+        return None
+    import importlib
+
+    importlib.reload(_super_admin_mod)
+    return _super_admin_mod.handle(method, route, item_id, body, qs, headers)
 
 
 def ensure_files() -> None:
@@ -223,6 +256,52 @@ def set_request_sandbox(sandbox_id: str) -> None:
 
 def clear_request_sandbox() -> None:
     _request_ctx.sandbox = ""
+    _request_ctx.tenant = ""
+
+
+def clear_request_tenant() -> None:
+    _request_ctx.tenant = ""
+
+
+def set_request_tenant(tenant_id: str) -> None:
+    tid = re.sub(r"[^a-zA-Z0-9_-]", "", str(tenant_id or ""))
+    _request_ctx.tenant = tid
+
+
+def active_tenant() -> str:
+    return str(getattr(_request_ctx, "tenant", "") or "")
+
+
+def active_uploads_base() -> Path:
+    tenant = active_tenant()
+    if tenant:
+        return UPLOADS / "tenants" / tenant
+    sandbox = active_sandbox()
+    if sandbox:
+        return UPLOADS / sandbox
+    return UPLOADS
+
+
+def branding_uploads_dir() -> Path:
+    path = active_uploads_base() / "branding"
+    path.mkdir(parents=True, exist_ok=True)
+    return path
+
+
+def uploads_items_dir() -> Path:
+    path = active_uploads_base() / "items"
+    path.mkdir(parents=True, exist_ok=True)
+    return path
+
+
+def uploads_web_prefix(subdir: str = "items") -> str:
+    tenant = active_tenant()
+    if tenant:
+        return f"uploads/tenants/{tenant}/{subdir}/"
+    sandbox = active_sandbox()
+    if sandbox:
+        return f"uploads/{sandbox}/{subdir}/"
+    return f"uploads/{subdir}/"
 
 
 def active_sandbox() -> str:
@@ -230,10 +309,7 @@ def active_sandbox() -> str:
 
 
 def store_path(path: Path) -> Path:
-    """Remap live data/*.json into data/{sandbox}/*.json when a sandbox is active."""
-    sandbox = active_sandbox()
-    if not sandbox:
-        return path
+    """Remap live data/*.json into tenant or sandbox directories."""
     try:
         resolved = path.resolve()
         data_resolved = DATA.resolve()
@@ -241,9 +317,15 @@ def store_path(path: Path) -> Path:
         return path
     if resolved.parent != data_resolved:
         return path
-    if resolved.name not in _SANDBOX_FILENAMES:
-        return path
-    return DATA / sandbox / resolved.name
+
+    tenant = active_tenant()
+    if tenant and resolved.name in _TENANT_FILENAMES:
+        return DATA / "tenants" / tenant / resolved.name
+
+    sandbox = active_sandbox()
+    if sandbox and resolved.name in _SANDBOX_FILENAMES:
+        return DATA / sandbox / resolved.name
+    return path
 
 
 def read_json(path: Path, default):
@@ -423,7 +505,14 @@ def read_table_layout() -> dict:
     data = read_json(TABLES, {})
     if not isinstance(data, dict):
         data = {}
-    regions = data.get("regions") or default_regions()
+    if "regions" in data:
+        regions = data.get("regions")
+        if not isinstance(regions, list):
+            regions = []
+    elif active_tenant():
+        regions = []
+    else:
+        regions = default_regions()
     states = data.get("states") or data.get("tables") or {}
     if not isinstance(states, dict):
         states = {}
@@ -431,11 +520,14 @@ def read_table_layout() -> dict:
 
 
 def write_table_layout(layout: dict) -> None:
+    regions = layout.get("regions")
+    if not isinstance(regions, list):
+        regions = []
     write_json(
         TABLES,
         {
-            "regions": layout.get("regions") or default_regions(),
-            "tables": layout.get("states") or {},
+            "regions": regions,
+            "states": layout.get("states") or {},
         },
     )
 
@@ -1017,14 +1109,17 @@ def normalize_asset_path(raw) -> str:
 
 def delete_branding_images(kind: str) -> None:
     kind = re.sub(r"[^a-z0-9_-]", "", str(kind or "").lower())
-    if not kind or not BRANDING_UPLOADS.exists():
+    if not kind:
         return
-    for path in BRANDING_UPLOADS.glob(f"{kind}.*"):
+    branding_dir = branding_uploads_dir()
+    if not branding_dir.exists():
+        return
+    for path in branding_dir.glob(f"{kind}.*"):
         try:
             path.unlink()
         except OSError:
             pass
-    for path in BRANDING_UPLOADS.glob(f"{kind}-*"):
+    for path in branding_dir.glob(f"{kind}-*"):
         try:
             path.unlink()
         except OSError:
@@ -1058,12 +1153,11 @@ def save_branding_image(kind: str, data_url: str) -> str:
         ext = "webp"
     elif "svg" in meta:
         return ""
-    BRANDING_UPLOADS.mkdir(parents=True, exist_ok=True)
     delete_branding_images(kind)
     name = f"{kind}-{int(time.time() * 1000)}.{ext}"
-    path = BRANDING_UPLOADS / name
+    path = branding_uploads_dir() / name
     path.write_bytes(raw)
-    return f"uploads/branding/{name}"
+    return f"{uploads_web_prefix('branding')}{name}"
 
 
 def safe_item_id(raw) -> str:
@@ -1084,16 +1178,17 @@ def allowed_preset_icon(path) -> str:
 
 def delete_item_images(item_id: str) -> None:
     item_id = safe_item_id(item_id)
-    if not item_id or not UPLOADS.exists():
+    if not item_id:
         return
-    for path in list(UPLOADS.glob(f"{item_id}.*")) + list(
-        UPLOADS.glob(f"{item_id}-*")
-    ):
+    base = active_uploads_base()
+    if not base.exists():
+        return
+    for path in list(base.glob(f"{item_id}.*")) + list(base.glob(f"{item_id}-*")):
         try:
             path.unlink()
         except OSError:
             pass
-    items_dir = UPLOADS / "items"
+    items_dir = uploads_items_dir()
     if items_dir.is_dir():
         for path in list(items_dir.glob(f"{item_id}.*")) + list(
             items_dir.glob(f"{item_id}-*")
@@ -1131,8 +1226,7 @@ def save_item_image(item_id: str, data_url: str) -> str:
             r"on\w+\s*=", text, re.I
         ) or re.search(r"javascript:", text, re.I):
             return ""
-    items_dir = UPLOADS / "items"
-    items_dir.mkdir(parents=True, exist_ok=True)
+    items_dir = uploads_items_dir()
     delete_item_images(item_id)
     ext = "jpg"
     if is_svg:
@@ -1144,7 +1238,7 @@ def save_item_image(item_id: str, data_url: str) -> str:
     name = f"{item_id}-{int(time.time())}.{ext}"
     path = items_dir / name
     path.write_bytes(raw)
-    return f"uploads/items/{name}"
+    return f"{uploads_web_prefix('items')}{name}"
 
 
 def set_category_icon_value(overrides: dict, category_index: int, icon: str, clear: bool) -> bool:
@@ -1200,10 +1294,89 @@ def set_category_station_value(overrides: dict, category_index: int, station: st
     return True
 
 
+def ensure_menu_overrides(overrides: dict) -> dict:
+    if not isinstance(overrides, dict):
+        overrides = {}
+    if not isinstance(overrides.get("_added"), dict):
+        overrides["_added"] = {}
+    if not isinstance(overrides.get("_addedCategories"), dict):
+        overrides["_addedCategories"] = {}
+    if not isinstance(overrides.get("_categories"), dict):
+        overrides["_categories"] = {}
+    if not isinstance(overrides.get("_categoryOrder"), list):
+        overrides["_categoryOrder"] = []
+    return overrides
+
+
+def category_order_append(overrides: dict, category_index: int) -> None:
+    order = overrides.setdefault("_categoryOrder", [])
+    if category_index not in order:
+        order.append(category_index)
+
+
+def category_order_remove(overrides: dict, category_index: int) -> None:
+    order = overrides.get("_categoryOrder")
+    if not isinstance(order, list):
+        return
+    overrides["_categoryOrder"] = [
+        int(existing)
+        for existing in order
+        if int(existing) != int(category_index)
+    ]
+
+
+def tenant_default_site_settings(name_fa: str = "کافه", name_en: str = "Cafe") -> dict:
+    return {
+        "restaurantNameFa": name_fa,
+        "restaurantNameEn": name_en,
+        "tagline": "",
+        "address": "",
+        "phone": "",
+        "logo": "",
+        "backgroundImage": "",
+        "primary": "#566347",
+        "secondary": "#D8DAD3",
+        "creditName": "",
+        "telegram": "",
+        "email": "",
+        "showNewSection": True,
+        "showFooterCredit": True,
+        "showContactOnMenu": False,
+        "showLogoOnMenu": True,
+        "showLogoOnReceipt": False,
+        "showContactOnReceipt": True,
+        "receiptFooterMessage": "",
+        "showBackgroundOnMenu": True,
+        "menuStructure": "classic",
+        "updatedAt": 0,
+    }
+
+
+def settings_defaults_for_store() -> dict:
+    if active_tenant():
+        raw = read_json(SETTINGS, {})
+        if isinstance(raw, dict):
+            name_fa = str(raw.get("restaurantNameFa") or raw.get("restaurantNameEn") or "کافه").strip() or "کافه"
+            name_en = str(raw.get("restaurantNameEn") or name_fa).strip() or name_fa
+            return tenant_default_site_settings(name_fa, name_en)
+        return tenant_default_site_settings()
+    return default_site_settings()
+
+
 def merge_site_settings(base: dict, incoming: dict) -> dict:
-    out = {**default_site_settings(), **(base if isinstance(base, dict) else {})}
+    defaults = settings_defaults_for_store()
+    out = {**defaults, **(base if isinstance(base, dict) else {})}
     if not isinstance(incoming, dict):
         return out
+    incoming = dict(incoming)
+    for old, new in (
+        ("primaryColor", "primary"),
+        ("secondaryColor", "secondary"),
+        ("logoUrl", "logo"),
+        ("backgroundUrl", "backgroundImage"),
+    ):
+        if new not in incoming and old in incoming:
+            incoming[new] = incoming.pop(old)
     if "restaurantNameFa" in incoming:
         out["restaurantNameFa"] = str(incoming["restaurantNameFa"] or "")[:80].strip()
     if "restaurantNameEn" in incoming:
@@ -1272,11 +1445,11 @@ def merge_site_settings(base: dict, incoming: dict) -> dict:
         except (TypeError, ValueError):
             pass
     for key, fallback in (
-        ("restaurantNameFa", default_site_settings()["restaurantNameFa"]),
-        ("restaurantNameEn", default_site_settings()["restaurantNameEn"]),
-        ("tagline", default_site_settings()["tagline"]),
-        ("creditName", default_site_settings()["creditName"]),
-        ("receiptFooterMessage", default_site_settings()["receiptFooterMessage"]),
+        ("restaurantNameFa", defaults["restaurantNameFa"]),
+        ("restaurantNameEn", defaults["restaurantNameEn"]),
+        ("tagline", defaults["tagline"]),
+        ("creditName", defaults["creditName"]),
+        ("receiptFooterMessage", defaults["receiptFooterMessage"]),
     ):
         if not out.get(key):
             out[key] = fallback
@@ -1285,7 +1458,8 @@ def merge_site_settings(base: dict, incoming: dict) -> dict:
 
 def read_site_settings() -> dict:
     raw = read_json(SETTINGS, {})
-    return merge_site_settings(default_site_settings(), raw if isinstance(raw, dict) else {})
+    base = settings_defaults_for_store()
+    return merge_site_settings(base, raw if isinstance(raw, dict) else {})
 
 
 def compute_settings_summary(orders, invoices, layout: dict) -> dict:
@@ -1973,7 +2147,7 @@ class Handler(BaseHTTPRequestHandler):
         )
         self.send_header(
             "Access-Control-Allow-Headers",
-            "Content-Type, X-Cashier-Token, Authorization, X-Miiziito-Sandbox, X-Lumier-Sandbox",
+            "Content-Type, X-Cashier-Token, Authorization, X-Miiziito-Sandbox, X-Lumier-Sandbox, X-Miiziito-Tenant, X-Lumier-Tenant, X-Super-Admin-Token",
         )
         self.send_header("Cache-Control", "no-store")
 
@@ -2079,37 +2253,58 @@ class Handler(BaseHTTPRequestHandler):
             self._json(500, {"error": "server", "detail": str(exc)})
         finally:
             clear_request_sandbox()
+            clear_request_tenant()
 
     def _dispatch(self, method, route, item_id, body, qs):
         token = get_token(dict(self.headers), body)
-        session = session_ok(token)
 
         clear_request_sandbox()
         sandbox_id = ""
-        if isinstance(session, dict) and session.get("role") == "dev":
-            sandbox_id = sanitize_sandbox_id(session.get("sandbox") or "dev") or "dev"
-        elif not session:
-            # Allow unauthenticated sandbox hint (matches PHP request_sandbox_id).
-            hdr = (
-                self.headers.get("X-Miiziito-Sandbox")
-                or self.headers.get("x-miiziito-sandbox")
-                or self.headers.get("X-Lumier-Sandbox")
-                or self.headers.get("x-lumier-sandbox")
-            )
-            if hdr:
-                sandbox_id = sanitize_sandbox_id(hdr)
-            elif isinstance(body, dict) and body.get("sandbox"):
-                sandbox_id = sanitize_sandbox_id(body.get("sandbox"))
-            elif qs.get("sandbox"):
-                raw = qs.get("sandbox")
-                sandbox_id = sanitize_sandbox_id(
-                    raw[0] if isinstance(raw, list) else raw
+        tenant_slug = ""
+
+        if request_tenant_slug and find_cafe_by_slug and is_cafe_live:
+            tenant_slug = request_tenant_slug(dict(self.headers), body, qs)
+        if tenant_slug:
+            cafe = find_cafe_by_slug(tenant_slug)
+            if not cafe or not is_cafe_live(cafe):
+                if route != "health":
+                    return self._json(
+                        404,
+                        {"error": "tenant_not_found", "slug": tenant_slug},
+                    )
+            else:
+                if provision_tenant:
+                    provision_tenant(cafe)
+                set_request_tenant(str(cafe.get("id") or ""))
+
+        session = session_ok(token)
+        is_dev = isinstance(session, dict) and session.get("role") == "dev"
+
+        if not tenant_slug:
+            if is_dev:
+                sandbox_id = sanitize_sandbox_id(session.get("sandbox") or "dev") or "dev"
+            elif not session:
+                # Allow unauthenticated sandbox hint (matches PHP request_sandbox_id).
+                hdr = (
+                    self.headers.get("X-Miiziito-Sandbox")
+                    or self.headers.get("x-miiziito-sandbox")
+                    or self.headers.get("X-Lumier-Sandbox")
+                    or self.headers.get("x-lumier-sandbox")
                 )
+                if hdr:
+                    sandbox_id = sanitize_sandbox_id(hdr)
+                elif isinstance(body, dict) and body.get("sandbox"):
+                    sandbox_id = sanitize_sandbox_id(body.get("sandbox"))
+                elif qs.get("sandbox"):
+                    raw = qs.get("sandbox")
+                    sandbox_id = sanitize_sandbox_id(
+                        raw[0] if isinstance(raw, list) else raw
+                    )
         if sandbox_id:
             set_request_sandbox(sandbox_id)
 
-        if sa_handle and str(route or "").startswith("sa-"):
-            result = sa_handle(method, route, item_id, body, qs, dict(self.headers))
+        if _super_admin_mod and str(route or "").startswith("sa-"):
+            result = _sa_handle(method, route, item_id, body, qs, dict(self.headers))
             if result:
                 return self._json(int(result.get("status") or 500), result.get("body") or {})
 
@@ -2125,12 +2320,18 @@ class Handler(BaseHTTPRequestHandler):
             entered = str(body.get("password") or "")
             role = ""
             sandbox = ""
-            if secret_matches(secrets_map.get("CASHIER_PASSWORD", ""), entered):
-                role = "cashier"
-            elif secret_matches(secrets_map.get("DEV_PASSWORD", ""), entered):
-                role, sandbox = "dev", "dev"
-            elif secret_matches(secrets_map.get("DEV_PASSWORD_2", ""), entered):
-                role, sandbox = "dev", "dev2"
+            tenant_id = active_tenant()
+            if tenant_id and verify_tenant_cashier_password:
+                tenant_verify = verify_tenant_cashier_password(tenant_id, entered)
+                if tenant_verify is True:
+                    role = "cashier"
+            if not role:
+                if secret_matches(secrets_map.get("CASHIER_PASSWORD", ""), entered):
+                    role = "cashier"
+                elif secret_matches(secrets_map.get("DEV_PASSWORD", ""), entered):
+                    role, sandbox = "dev", "dev"
+                elif secret_matches(secrets_map.get("DEV_PASSWORD_2", ""), entered):
+                    role, sandbox = "dev", "dev2"
             if not role:
                 return self._json(401, {"error": "bad_password"})
             new_token = secrets.token_hex(24)
@@ -2166,11 +2367,87 @@ class Handler(BaseHTTPRequestHandler):
         if route == "menu" and method == "POST":
             if not session:
                 return self._json(401, {"error": "auth_required"})
-            overrides = read_json(MENU, {})
-            if not isinstance(overrides, dict):
-                overrides = {}
+            overrides = ensure_menu_overrides(read_json(MENU, {}))
             action = str(body.get("action") or "update")
             item_key = str(body.get("id") or "")
+
+            if action == "addCategory":
+                name = str(body.get("name") or "").strip()[:80]
+                if not name:
+                    return self._json(400, {"error": "name_required"})
+                added_cats = overrides["_addedCategories"]
+                if len(added_cats) >= 40:
+                    return self._json(400, {"error": "too_many"})
+                next_ci = 1000
+                for key in added_cats:
+                    try:
+                        n = int(key)
+                        if n >= next_ci:
+                            next_ci = n + 1
+                    except (TypeError, ValueError):
+                        pass
+                icon = ""
+                if body.get("image"):
+                    saved = save_item_image(f"caticon-{next_ci}", body.get("image"))
+                    if not saved:
+                        return self._json(400, {"error": "image_invalid"})
+                    icon = saved
+                elif body.get("icon"):
+                    icon = allowed_preset_icon(body.get("icon"))
+                if not icon:
+                    icon = allowed_preset_icon("assets/category/coffee.png")
+                if not icon:
+                    return self._json(400, {"error": "icon_required"})
+                added_cats[str(next_ci)] = {
+                    "name": name,
+                    "hidden": False,
+                    "icon": icon,
+                }
+                category_order_append(overrides, next_ci)
+                write_json(MENU, overrides)
+                return self._json(
+                    200, {"overrides": overrides, "categoryIndex": next_ci}
+                )
+
+            if action == "add":
+                try:
+                    category_index = int(body.get("categoryIndex"))
+                except (TypeError, ValueError):
+                    category_index = -1
+                if category_index < 0 or category_index > 2000:
+                    return self._json(400, {"error": "category_required"})
+                if category_index >= 1000 and str(category_index) not in overrides[
+                    "_addedCategories"
+                ]:
+                    return self._json(400, {"error": "category_unknown"})
+                name = str(body.get("name") or "").strip()[:120]
+                if not name:
+                    return self._json(400, {"error": "name_required"})
+                added = overrides["_added"]
+                if len(added) >= 120:
+                    return self._json(400, {"error": "too_many"})
+                try:
+                    price = float(body.get("price") or 0)
+                except (TypeError, ValueError):
+                    price = 0.0
+                if price < 0:
+                    price = 0.0
+                item_id = f"cat-{category_index}-custom-{secrets.token_hex(5)}"
+                now = int(time.time() * 1000)
+                added[item_id] = {
+                    "categoryIndex": category_index,
+                    "name": name,
+                    "description": str(body.get("description") or "").strip()[:400],
+                    "price": price,
+                    "soldOut": False,
+                    "toppings": [],
+                    "isNew": True,
+                    "createdAt": now,
+                    "newAt": now,
+                }
+                overrides["_added"] = added
+                write_json(MENU, overrides)
+                return self._json(200, {"overrides": overrides, "id": item_id})
 
             if action == "reorderCategories":
                 raw_order = body.get("order") or []
@@ -2191,6 +2468,47 @@ class Handler(BaseHTTPRequestHandler):
                         if len(clean) >= 80:
                             break
                 overrides["_categoryOrder"] = clean
+                write_json(MENU, overrides)
+                return self._json(200, {"ok": True, "overrides": overrides})
+
+            if action == "deleteCategory":
+                try:
+                    category_index = int(body.get("categoryIndex"))
+                except (TypeError, ValueError):
+                    category_index = -1
+                key = str(category_index)
+                if category_index >= 1000:
+                    added_cats = overrides.get("_addedCategories")
+                    if not isinstance(added_cats, dict) or key not in added_cats:
+                        return self._json(400, {"error": "category_unknown"})
+                    del added_cats[key]
+                    overrides["_addedCategories"] = added_cats
+                    category_order_remove(overrides, category_index)
+                    delete_item_images(f"caticon-{category_index}")
+                    added = overrides.get("_added")
+                    if isinstance(added, dict):
+                        for item_id, item in list(added.items()):
+                            if not isinstance(item, dict):
+                                continue
+                            try:
+                                item_ci = int(item.get("categoryIndex"))
+                            except (TypeError, ValueError):
+                                item_ci = -1
+                            if item_ci != category_index:
+                                continue
+                            delete_item_images(item_id)
+                            del added[item_id]
+                        overrides["_added"] = added
+                else:
+                    if category_index < 0 or category_index > 40:
+                        return self._json(400, {"error": "category_required"})
+                    cats = overrides.setdefault("_categories", {})
+                    if not isinstance(cats.get(key), dict):
+                        cats[key] = {}
+                    cats[key]["deleted"] = True
+                    cats[key]["hidden"] = True
+                    overrides["_categories"] = cats
+                    category_order_remove(overrides, category_index)
                 write_json(MENU, overrides)
                 return self._json(200, {"ok": True, "overrides": overrides})
 

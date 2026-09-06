@@ -5,6 +5,7 @@ import { saFetch } from "@/lib/super-admin/api";
 import { formatDate } from "@/lib/super-admin/format";
 import type { Cafe, PageResult, Plan } from "@/lib/super-admin/types";
 import { toast } from "../ui/Toast";
+import { CafeUrlField } from "../CafeUrlField";
 import {
   Badge,
   EmptyState,
@@ -57,13 +58,47 @@ export function CafesPage({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [q, status, page]);
 
+  async function endSubscription(c: Cafe) {
+    if (!confirm(`اشتراک «${c.name}» پایان یابد؟ منوی آنلاین غیرفعال می‌شود.`)) return;
+    try {
+      await saFetch("sa-cafe", {
+        id: c.id,
+        method: "POST",
+        body: JSON.stringify({ action: "end_subscription" }),
+      });
+      toast("اشتراک پایان یافت", "success");
+      load();
+    } catch {
+      toast("پایان اشتراک ممکن نشد", "error");
+    }
+  }
+
+  async function suspendCafe(c: Cafe) {
+    if (!confirm(`کافه «${c.name}» معلق شود؟`)) return;
+    try {
+      await saFetch("sa-cafe", {
+        id: c.id,
+        method: "POST",
+        body: JSON.stringify({ action: "suspend", reason: "تعلیق توسط ادمین" }),
+      });
+      toast("کافه معلق شد", "success");
+      load();
+    } catch {
+      toast("تعلیق ممکن نشد", "error");
+    }
+  }
+
   async function createCafe() {
     try {
-      const res = await saFetch<{ cafe: Cafe }>("sa-cafes", {
+      const res = await saFetch<{ cafe: Cafe; cashierPassword?: string }>("sa-cafes", {
         method: "POST",
         body: JSON.stringify(form),
       });
-      toast("کافه ساخته شد", "success");
+      if (res.cashierPassword) {
+        toast(`کافه ساخته شد — رمز صندوق: ${res.cashierPassword}`, "success");
+      } else {
+        toast("کافه ساخته شد", "success");
+      }
       setCreateOpen(false);
       setForm({ name: "", ownerName: "", email: "", phone: "" });
       onNavigate(`/panel-admin/cafes/${res.cafe.id}/`);
@@ -135,6 +170,8 @@ export function CafesPage({
                 <thead>
                   <tr>
                     <th>کافه</th>
+                    <th>منو</th>
+                    <th>صندوق</th>
                     <th>مالک</th>
                     <th>تلفن</th>
                     <th>ایمیل</th>
@@ -149,6 +186,17 @@ export function CafesPage({
                     <tr key={c.id}>
                       <td data-label="کافه">
                         <strong>{c.name}</strong>
+                        {c.slug ? (
+                          <div style={{ fontSize: "0.75rem", color: "var(--sa-text-faint)" }} dir="ltr">
+                            /{c.slug}/
+                          </div>
+                        ) : null}
+                      </td>
+                      <td data-label="منو">
+                        <CafeUrlField slug={c.slug} kind="menu" />
+                      </td>
+                      <td data-label="صندوق">
+                        <CafeUrlField slug={c.slug} kind="cashier" />
                       </td>
                       <td data-label="مالک">{c.ownerName || "—"}</td>
                       <td data-label="تلفن">{c.phone || "—"}</td>
@@ -159,13 +207,33 @@ export function CafesPage({
                       </td>
                       <td data-label="ایجاد">{formatDate(c.createdAt)}</td>
                       <td data-label="اقدامات">
-                        <button
-                          type="button"
-                          className="sa-btn sa-btn-ghost sa-btn-sm"
-                          onClick={() => onNavigate(`/panel-admin/cafes/${c.id}/`)}
-                        >
-                          مشاهده
-                        </button>
+                        <div className="sa-actions-row" style={{ flexWrap: "wrap", gap: 6 }}>
+                          <button
+                            type="button"
+                            className="sa-btn sa-btn-ghost sa-btn-sm"
+                            onClick={() => onNavigate(`/panel-admin/cafes/${c.id}/`)}
+                          >
+                            مشاهده
+                          </button>
+                          {(c.status === "active" || c.status === "trial") ? (
+                            <button
+                              type="button"
+                              className="sa-btn sa-btn-ghost sa-btn-sm"
+                              onClick={() => endSubscription(c)}
+                            >
+                              پایان اشتراک
+                            </button>
+                          ) : null}
+                          {c.status === "active" || c.status === "trial" ? (
+                            <button
+                              type="button"
+                              className="sa-btn sa-btn-ghost sa-btn-sm"
+                              onClick={() => suspendCafe(c)}
+                            >
+                              تعلیق
+                            </button>
+                          ) : null}
+                        </div>
                       </td>
                     </tr>
                   ))}

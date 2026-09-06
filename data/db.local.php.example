@@ -1,0 +1,5 @@
+<?php
+/** Copy to db.local.php and set your Neon connection string (direct endpoint, not pooler). */
+$url = "postgresql://USER:PASS@ep-xxx.region.aws.neon.tech/neondb?sslmode=require";
+putenv("MIIZIITO_DATABASE_URL=" . $url);
+$_ENV["MIIZIITO_DATABASE_URL"] = $url;

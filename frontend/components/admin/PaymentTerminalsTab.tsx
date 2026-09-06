@@ -8,14 +8,20 @@ import {
   PAYMENT_PROVIDER_OPTIONS,
   agentHealth,
   connectionTypeLabel,
+  discoverTerminals,
+  discoveredToTerminalDraft,
   isProviderConfigured,
   listPaymentTerminals,
   mutatePaymentTerminal,
   providerLabel,
+  testDiscoveredTerminal,
   testTerminalConnection,
+  type DiscoveredTerminal,
   type PaymentTerminal,
+  type PosDiscoveryKind,
   type TerminalConnectionType,
 } from "@/lib/payment";
+import { getPrinterCapabilities, type PrinterCapabilities } from "@/lib/printer";
 import { useToast } from "@/components/ToastProvider";
 import { LoadingShimmer } from "@/components/admin/LoadingShimmer";
 import { CpSelect } from "@/components/ui/CpSelect";
@@ -67,6 +73,20 @@ function endpointLabel(t: PaymentTerminal): string {
   return connectionTypeLabel(t.connectionType);
 }
 
+function discoveredEndpointLabel(d: DiscoveredTerminal): string {
+  if (d.connectionType === "network") {
+    const parts = [d.host, d.port].filter(Boolean);
+    return parts.length ? parts.join(":") : "شبکه";
+  }
+  if (d.connectionType === "serial" || d.connectionType === "usb") {
+    return d.serialPort || d.label || connectionTypeLabel(d.connectionType);
+  }
+  if (d.connectionType === "bluetooth") {
+    return d.bluetoothIdentifier || d.label || "بلوتوث";
+  }
+  return d.label || connectionTypeLabel(d.connectionType);
+}
+
 export function PaymentTerminalsTab({ active }: { active: boolean }) {
   const { showToast } = useToast();
   const [terminals, setTerminals] = useState<PaymentTerminal[]>([]);
@@ -81,6 +101,11 @@ export function PaymentTerminalsTab({ active }: { active: boolean }) {
   const [testPayId, setTestPayId] = useState<string | null>(null);
   const [confirmTestPay, setConfirmTestPay] = useState(false);
   const [q, setQ] = useState("");
+  const [discoverKind, setDiscoverKind] = useState<PosDiscoveryKind>("network");
+  const [scanning, setScanning] = useState(false);
+  const [discovered, setDiscovered] = useState<DiscoveredTerminal[]>([]);
+  const [discoverMeta, setDiscoverMeta] = useState("");
+  const [caps, setCaps] = useState<PrinterCapabilities | null>(null);
 
   useEffect(() => setMounted(true), []);
 
@@ -106,6 +131,9 @@ export function PaymentTerminalsTab({ active }: { active: boolean }) {
     agentHealth()
       .then((h) => setAgentOk(!!h.ok && h.payment !== false))
       .catch(() => setAgentOk(false));
+    getPrinterCapabilities()
+      .then((data) => setCaps(data.capabilities || null))
+      .catch(() => setCaps(null));
   }, [active]);
 
   useEffect(() => {
@@ -160,6 +188,70 @@ export function PaymentTerminalsTab({ active }: { active: boolean }) {
       isDefault: t.isDefault,
     });
     setDialogOpen(true);
+  }
+
+  function openFromDiscovery(found: DiscoveredTerminal, provider = "generic") {
+    const seed = discoveredToTerminalDraft(found, provider);
+    setDraft({
+      ...EMPTY_DRAFT,
+      name: seed.name || found.name || "پایانه پرداخت",
+      provider: seed.provider || provider,
+      connectionType: seed.connectionType || "network",
+      host: seed.host || "",
+      port: String(seed.port || ""),
+      protocol: String(seed.protocol || "tcp"),
+      serialPort: seed.serialPort || "",
+      baudRate: String(seed.baudRate || 9600),
+      bluetoothIdentifier: seed.bluetoothIdentifier || "",
+      model: seed.model || "",
+      stationId: "",
+      isActive: true,
+      isDefault: terminals.length === 0,
+    });
+    setDialogOpen(true);
+  }
+
+  async function runDiscover(kind: PosDiscoveryKind) {
+    setDiscoverKind(kind);
+    setScanning(true);
+    setDiscoverMeta("");
+    setDiscovered([]);
+    try {
+      const data = await discoverTerminals(kind);
+      setDiscovered(data.devices || []);
+      const bits = [
+        data.localIp ? `IP محلی: ${data.localIp}` : "",
+        data.subnet ? `شبکه: ${data.subnet}` : "",
+        data.scanned != null
+          ? `${toPersianDigits(data.scanned)} آدرس اسکن شد`
+          : "",
+        data.message || "",
+      ].filter(Boolean);
+      setDiscoverMeta(bits.join(" · "));
+      if (!(data.devices || []).length) {
+        showToast(data.message || "پایانه‌ای پیدا نشد");
+      }
+    } catch {
+      showToast("جستجوی پایانه ناموفق بود", "error");
+    } finally {
+      setScanning(false);
+    }
+  }
+
+  async function runDiscoveredTest(found: DiscoveredTerminal) {
+    setTestingId(found.id);
+    try {
+      const result = await testDiscoveredTerminal(found);
+      if (result.ok) {
+        showToast(result.message || "اتصال برقرار است", "success");
+      } else {
+        showToast(result.message || "اتصال ناموفق", "error");
+      }
+    } catch {
+      showToast("تست اتصال ناموفق بود", "error");
+    } finally {
+      setTestingId(null);
+    }
   }
 
   async function saveDraft() {
@@ -343,6 +435,98 @@ export function PaymentTerminalsTab({ active }: { active: boolean }) {
         >
           {agentOk === null ? "…" : agentOk ? "آماده" : "قطع"}
         </span>
+      </section>
+
+      <section className="printer-discover" aria-label="کشف پایانه پرداخت">
+        <div className="printer-discover-head">
+          <div>
+            <h4>کشف کارتخوان / POS</h4>
+            <p>
+              شبکه: پورت‌های رایج ۸۰۸۰، ۸۴۴۳، ۹۰۰۰، ۵۰۰۰، ۹۱۰۰ · بلوتوث و USB
+              روی میزبان صندوق اسکن می‌شوند
+              {caps?.platform ? ` · ${caps.platform}` : ""}
+            </p>
+          </div>
+          <div className="printer-discover-actions">
+            <button
+              type="button"
+              className={`cp-btn cp-btn--ghost${discoverKind === "network" && scanning ? " is-loading" : ""}`}
+              disabled={scanning || busy}
+              onClick={() => runDiscover("network")}
+            >
+              شبکه
+            </button>
+            <button
+              type="button"
+              className={`cp-btn cp-btn--ghost${discoverKind === "bluetooth" && scanning ? " is-loading" : ""}`}
+              disabled={scanning || busy || caps?.bluetooth === false}
+              onClick={() => runDiscover("bluetooth")}
+              title={
+                caps?.bluetooth === false
+                  ? "بلوتوث روی این میزبان در دسترس نیست"
+                  : undefined
+              }
+            >
+              بلوتوث
+            </button>
+            <button
+              type="button"
+              className={`cp-btn cp-btn--ghost${discoverKind === "usb" && scanning ? " is-loading" : ""}`}
+              disabled={scanning || busy}
+              onClick={() => runDiscover("usb")}
+            >
+              USB
+            </button>
+            <button
+              type="button"
+              className={`cp-btn cp-btn--ghost${discoverKind === "serial" && scanning ? " is-loading" : ""}`}
+              disabled={scanning || busy}
+              onClick={() => runDiscover("serial")}
+            >
+              سریال
+            </button>
+          </div>
+        </div>
+        {scanning ? (
+          <p className="printer-discover-meta">در حال اسکن… لطفاً صبر کنید</p>
+        ) : discoverMeta ? (
+          <p className="printer-discover-meta">{discoverMeta}</p>
+        ) : null}
+        {discovered.length ? (
+          <ul className="printer-discover-list">
+            {discovered.map((d) => (
+              <li key={d.id} className="printer-discover-row">
+                <div>
+                  <strong>{d.name || d.label || "پایانه"}</strong>
+                  <small>
+                    {connectionTypeLabel(d.connectionType)} ·{" "}
+                    {discoveredEndpointLabel(d)}
+                    {d.note ? ` · ${d.note}` : ""}
+                  </small>
+                  <em>{d.status || "discovered"}</em>
+                </div>
+                <div className="printer-discover-row-actions">
+                  <button
+                    type="button"
+                    className="cp-btn cp-btn--ghost hardware-row-btn"
+                    disabled={busy || scanning || testingId === d.id}
+                    onClick={() => runDiscoveredTest(d)}
+                  >
+                    {testingId === d.id ? "…" : "تست"}
+                  </button>
+                  <button
+                    type="button"
+                    className="cp-btn cp-btn--primary hardware-row-btn"
+                    disabled={busy || scanning}
+                    onClick={() => openFromDiscovery(d)}
+                  >
+                    افزودن
+                  </button>
+                </div>
+              </li>
+            ))}
+          </ul>
+        ) : null}
       </section>
 
       <section className="hardware-quick">

@@ -5,6 +5,8 @@ import { saFetch } from "@/lib/super-admin/api";
 import { formatDate } from "@/lib/super-admin/format";
 import type { Cafe, Plan, Subscription } from "@/lib/super-admin/types";
 import { toast } from "../ui/Toast";
+import { CafeUrlField } from "../CafeUrlField";
+import { CafeCashierPasswordField } from "../CafeCashierPasswordField";
 import { Badge, ErrorBox, PageHeader, SkeletonTable } from "../ui/primitives";
 
 const CYCLE_LABEL: Record<string, string> = {
@@ -52,16 +54,20 @@ export function CafeDetailPage({
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(true);
   const [impersonating, setImpersonating] = useState(false);
+  const [cashierHasPassword, setCashierHasPassword] = useState(false);
+  const [cashierPassword, setCashierPassword] = useState("");
 
   async function load() {
     setLoading(true);
     setError("");
     try {
       const [res, planRes] = await Promise.all([
-        saFetch<{ cafe: Cafe; subscription: Subscription | null }>("sa-cafe", { id }),
+        saFetch<{ cafe: Cafe; subscription: Subscription | null; cashierAuth?: { hasPassword: boolean } }>("sa-cafe", { id }),
         saFetch<{ items: Plan[] }>("sa-plans"),
       ]);
       setCafe(res.cafe);
+      setCashierHasPassword(!!(res.cashierAuth?.hasPassword ?? res.cafe.cashierAuth?.hasPassword ?? res.cafe.settings?.hasCashierPassword));
+      setCashierPassword(res.cafe.settings?.cashierPassword || "");
       setSub(res.subscription);
       setPlans(planRes.items || []);
     } catch {
@@ -119,6 +125,40 @@ export function CafeDetailPage({
       load();
     } catch {
       toast("ایجاد اشتراک ممکن نشد", "error");
+    }
+  }
+
+  async function subAction(name: string, extra: Record<string, unknown> = {}) {
+    if (!sub?.id) {
+      toast("اشتراکی متصل نیست", "error");
+      return;
+    }
+    if (name === "cancel" && !confirm("این اشتراک لغو شود؟")) return;
+    try {
+      await saFetch("sa-subscription", {
+        id: sub.id,
+        method: "POST",
+        body: JSON.stringify({ action: name, ...extra }),
+      });
+      toast(name === "cancel" ? "اشتراک پایان یافت" : "به‌روزرسانی شد", "success");
+      load();
+    } catch {
+      toast("اقدام ناموفق بود", "error");
+    }
+  }
+
+  async function endSubscriptionHere() {
+    if (!confirm("اشتراک این کافه پایان یابد؟")) return;
+    try {
+      await saFetch("sa-cafe", {
+        id,
+        method: "POST",
+        body: JSON.stringify({ action: "end_subscription" }),
+      });
+      toast("اشتراک پایان یافت", "success");
+      load();
+    } catch {
+      toast("پایان اشتراک ممکن نشد", "error");
     }
   }
 
@@ -202,16 +242,46 @@ export function CafeDetailPage({
                 <strong>{cafe.phone || "—"}</strong>
               </div>
               <div className="sa-detail-item">
+                <label>آدرس منو</label>
+                <CafeUrlField slug={cafe.slug} kind="menu" />
+              </div>
+              <div className="sa-detail-item">
+                <label>پنل صندوقدار</label>
+                <CafeUrlField slug={cafe.slug} kind="cashier" />
+              </div>
+              <div className="sa-detail-item">
+                <label>رمز پنل صندوقدار</label>
+                <CafeCashierPasswordField
+                  cafeId={cafe.id}
+                  password={cashierPassword}
+                  hasPassword={cashierHasPassword}
+                  onUpdated={(has, pwd) => {
+                    setCashierHasPassword(has);
+                    if (pwd) setCashierPassword(pwd);
+                  }}
+                />
+              </div>
+              <div className="sa-detail-item">
+                <label>شناسه کافه</label>
+                <strong style={{ fontSize: "0.85rem" }} dir="ltr">
+                  {cafe.id}
+                </strong>
+              </div>
+              {cafe.slug ? (
+                <div className="sa-detail-item">
+                  <label>نامک (slug)</label>
+                  <strong dir="ltr" style={{ fontSize: "0.85rem" }}>
+                    {cafe.slug}
+                  </strong>
+                </div>
+              ) : null}
+              <div className="sa-detail-item">
                 <label>ایجاد</label>
                 <strong>{formatDate(cafe.createdAt)}</strong>
               </div>
               <div className="sa-detail-item">
                 <label>آخرین فعالیت</label>
                 <strong>{formatDate(cafe.lastActivityAt)}</strong>
-              </div>
-              <div className="sa-detail-item">
-                <label>شناسه کافه</label>
-                <strong style={{ fontSize: "0.8rem" }}>{cafe.id}</strong>
               </div>
             </div>
           </div>
@@ -280,6 +350,27 @@ export function CafeDetailPage({
                 </div>
               </div>
             )}
+            {sub ? (
+              <div className="sa-actions-row" style={{ marginTop: 20, flexWrap: "wrap", gap: 8 }}>
+                {sub.status !== "cancelled" && sub.status !== "expired" ? (
+                  <>
+                    <button type="button" className="sa-btn sa-btn-ghost sa-btn-sm" onClick={() => subAction("extend", { days: 30, reason: "تمدید توسط ادمین" })}>
+                      +۳۰ روز
+                    </button>
+                    <button type="button" className="sa-btn sa-btn-danger sa-btn-sm" onClick={endSubscriptionHere}>
+                      پایان اشتراک
+                    </button>
+                    <button type="button" className="sa-btn sa-btn-ghost sa-btn-sm" onClick={() => action("suspend", { reason: "تعلیق توسط ادمین" })}>
+                      تعلیق کافه
+                    </button>
+                  </>
+                ) : (
+                  <button type="button" className="sa-btn sa-btn-primary sa-btn-sm" onClick={() => subAction("reactivate")}>
+                    فعال‌سازی مجدد اشتراک
+                  </button>
+                )}
+              </div>
+            ) : null}
           </div>
         </div>
       ) : null}
@@ -288,6 +379,9 @@ export function CafeDetailPage({
         <div className="sa-panel">
           <div className="sa-panel-body">
             <div className="sa-actions-row">
+              <button type="button" className="sa-btn sa-btn-danger" onClick={endSubscriptionHere}>
+                پایان اشتراک
+              </button>
               <button type="button" className="sa-btn sa-btn-ghost" onClick={() => action("suspend", { reason: "تعلیق توسط ادمین" })}>
                 تعلیق
               </button>

@@ -1,87 +1,16 @@
-"use client";
+import type { Metadata } from "next";
+import { PlatformStoreApp } from "@/components/panel-admin/PlatformStoreApp";
+import { PLATFORM_BRAND } from "@/lib/brand";
+import "@/styles/panel-admin.css";
+import "@/styles/store-landing.css";
 
-import { useEffect, useState } from "react";
-import Link from "next/link";
-import { CustomerMenu } from "@/components/customer/CustomerMenu";
-import {
-  CartDrawer,
-  WaiterModal,
-  ReserveModal,
-} from "@/components/customer/CartDrawer";
-import { useCart } from "@/components/CartProvider";
-import { toPersianDigits } from "@/lib/format";
-import { resolveGuestTable } from "@/lib/table-session";
+export const metadata: Metadata = {
+  title: `${PLATFORM_BRAND.title} — منوی دیجیتال و سیستم مدیریت`,
+  description:
+    "منوی دیجیتال QR برای مشتری و سیستم مدیریت یکپارچه برای کافه و رستوران — سفارش، صندوق و فروش.",
+};
 
+/** Platform landing — https://miiziito.ir/ */
 export default function HomePage() {
-  const { count } = useCart();
-  const [cartOpen, setCartOpen] = useState(false);
-  const [waiterOpen, setWaiterOpen] = useState(false);
-  const [reserveOpen, setReserveOpen] = useState(false);
-  const [lockedTable, setLockedTable] = useState("");
-
-  useEffect(() => {
-    const table = resolveGuestTable();
-    if (table) setLockedTable(table);
-  }, []);
-
-  return (
-    <>
-      <CustomerMenu />
-
-      <button
-        type="button"
-        className="float-reserve"
-        id="reserve-table-btn"
-        aria-label="رزرو میز"
-        onClick={() => setReserveOpen(true)}
-      >
-        <span className="float-reserve-icon" aria-hidden="true" />
-        <span className="float-reserve-label">رزرو میز</span>
-      </button>
-
-      <button
-        type="button"
-        className="float-waiter"
-        id="waiter-call-btn"
-        aria-label="صدازدن گارسون"
-        onClick={() => setWaiterOpen(true)}
-      >
-        <span className="float-waiter-icon" aria-hidden="true" />
-        <span className="float-waiter-label">گارسون</span>
-      </button>
-
-      <button
-        type="button"
-        className="float-cart"
-        aria-label="سبد سفارش"
-        data-count={count}
-        onClick={() => setCartOpen(true)}
-      >
-        <span className="float-cart-icon" aria-hidden="true" />
-        <span className="float-cart-count">
-          {count > 0 ? toPersianDigits(count) : ""}
-        </span>
-      </button>
-
-      <CartDrawer
-        open={cartOpen}
-        onClose={() => setCartOpen(false)}
-        lockedTable={lockedTable}
-      />
-      <WaiterModal
-        open={waiterOpen}
-        onClose={() => setWaiterOpen(false)}
-        lockedTable={lockedTable}
-      />
-      <ReserveModal
-        open={reserveOpen}
-        onClose={() => setReserveOpen(false)}
-        lockedTable={lockedTable}
-      />
-
-      <Link href="/admin/" className="sr-only">
-        ورود صندوق
-      </Link>
-    </>
-  );
+  return <PlatformStoreApp />;
 }

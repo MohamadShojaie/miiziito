@@ -1,16 +1,19 @@
 "use client";
 
 import { useEffect, useState, type CSSProperties } from "react";
+import { useRouter } from "next/navigation";
 import type { MenuItem, Topping } from "@/lib/types";
 import { formatPriceAsNumber, parsePrice } from "@/lib/format";
 import { useCart } from "@/components/CartProvider";
 import { useToast } from "@/components/ToastProvider";
-import { apiJson, sandboxHeaders } from "@/lib/api";
+import { apiJson, menuHeaders } from "@/lib/api";
+import { CashierLoginModal } from "@/components/admin/CashierLoginModal";
 import {
   DEFAULT_SITE_SETTINGS,
   applySiteTheme,
   mergeSiteSettings,
   resolveMenuStructure,
+  settingsBaseForContext,
   type SiteSettings,
 } from "@/lib/settings";
 import {
@@ -23,6 +26,7 @@ import {
   type CustomerCategory,
   type MenuOverrides,
 } from "@/lib/menu-utils";
+import { setMenuTenantSlug } from "@/lib/tenant";
 
 function TabIcon({ src, name }: { src: string; name: string }) {
   const [step, setStep] = useState(0);
@@ -220,7 +224,8 @@ function MenuItemRow({
   );
 }
 
-export function CustomerMenu() {
+export function CustomerMenu({ tenantSlug = "" }: { tenantSlug?: string }) {
+  const router = useRouter();
   const { addItem } = useCart();
   const { showToast } = useToast();
   const [activeCat, setActiveCat] = useState(0);
@@ -230,34 +235,45 @@ export function CustomerMenu() {
   );
   const [overrides, setOverrides] = useState<MenuOverrides | null>(null);
   const [settings, setSettings] = useState<SiteSettings>(DEFAULT_SITE_SETTINGS);
+  const [loadError, setLoadError] = useState("");
+  const [menuLoaded, setMenuLoaded] = useState(false);
+  const [adminLoginOpen, setAdminLoginOpen] = useState(false);
   const [categories, setCategories] = useState<CustomerCategory[]>(() =>
     buildCustomerCategories(null)
   );
 
   useEffect(() => {
+    if (tenantSlug) setMenuTenantSlug(tenantSlug);
+    setLoadError("");
+    setMenuLoaded(false);
     apiJson<{ overrides?: MenuOverrides }>("/api/menu", {
       auth: false,
-      sandbox: true,
-      headers: sandboxHeaders(),
+      headers: menuHeaders(),
     })
       .then((data) => {
         const next = data.overrides || {};
         setOverrides(next);
         setCategories(buildCustomerCategories(next));
+        setMenuLoaded(true);
       })
-      .catch(() => {});
+      .catch(() => setLoadError("menu_unavailable"));
     apiJson<{ settings?: Partial<SiteSettings> }>("/api/settings", {
       auth: false,
-      sandbox: true,
-      headers: sandboxHeaders(),
+      headers: menuHeaders(),
     })
       .then((data) => {
-        const next = mergeSiteSettings(data.settings);
+        const next = mergeSiteSettings(
+          data.settings,
+          settingsBaseForContext(
+            data.settings?.restaurantNameFa,
+            data.settings?.restaurantNameEn
+          )
+        );
         setSettings(next);
         applySiteTheme(next);
       })
       .catch(() => {});
-  }, []);
+  }, [tenantSlug]);
 
   function toggleTopping(itemId: string, name: string) {
     setSelectedTops((prev) => {
@@ -344,6 +360,16 @@ export function CustomerMenu() {
     </nav>
   );
 
+  if (loadError) {
+    return (
+      <div style={{ padding: "2rem", textAlign: "center", color: "#666" }}>
+        <p>منوی این کافه در دسترس نیست یا اشتراک فعال ندارد.</p>
+      </div>
+    );
+  }
+
+  const menuEmpty = menuLoaded && categories.length === 0;
+
   return (
     <div className={`customer-menu customer-menu--${layout}`}>
       <header
@@ -387,6 +413,35 @@ export function CustomerMenu() {
         ) : null}
       </header>
 
+      {menuEmpty ? (
+        <div
+          className="customer-menu-empty"
+          style={{
+            padding: "3rem 1.5rem",
+            textAlign: "center",
+            maxWidth: "28rem",
+            margin: "2rem auto",
+          }}
+        >
+          <p style={{ fontSize: "1.1rem", marginBottom: "0.75rem", color: "var(--secondary, #566347)" }}>
+            منوی این کافه هنوز خالی است.
+          </p>
+          <p style={{ color: "#666", marginBottom: "1.25rem", lineHeight: 1.7 }}>
+            برای افزودن دسته‌بندی و آیتم، وارد پنل مدیریت کافه شوید.
+          </p>
+          {tenantSlug ? (
+            <button
+              type="button"
+              className="btn btn-primary"
+              style={{ display: "inline-block" }}
+              onClick={() => setAdminLoginOpen(true)}
+            >
+              ورود به پنل مدیریت
+            </button>
+          ) : null}
+        </div>
+      ) : (
+        <>
       <div className="customer-menu-body">
         {categoryNav}
         <main className="menu-content cp-menu-content" id="menu-content">
@@ -458,6 +513,22 @@ export function CustomerMenu() {
             </span>
           </div>
         </footer>
+      ) : null}
+        </>
+      )}
+
+      {adminLoginOpen && tenantSlug ? (
+        <CashierLoginModal
+          tenantSlug={tenantSlug}
+          title="ورود به پنل مدیریت"
+          hint="رمز پنل صندوقدار این کافه را وارد کنید"
+          submitLabel="ورود"
+          onClose={() => setAdminLoginOpen(false)}
+          onSuccess={() => {
+            setAdminLoginOpen(false);
+            router.push(`/${tenantSlug}/admin/`);
+          }}
+        />
       ) : null}
     </div>
   );

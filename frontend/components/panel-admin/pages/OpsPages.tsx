@@ -6,6 +6,7 @@ import { formatDate, formatMoney } from "@/lib/super-admin/format";
 import type {
   AdminUser,
   AuditLog,
+  Cafe,
   Coupon,
   DashboardData,
   HealthService,
@@ -48,6 +49,7 @@ const STATUS_OPT: Record<string, string> = {
   open: "باز",
   in_progress: "در حال پیگیری",
   waiting_customer: "منتظر مشتری",
+  needs_reply: "نیاز به پاسخ",
   resolved: "حل‌شده",
   closed: "بسته",
 };
@@ -660,29 +662,72 @@ export function NotificationsPage() {
 }
 
 export function SupportPage({ onNavigate }: { onNavigate: (href: string) => void }) {
-  const { data, q, setQ, st, setSt, page: _page, setPage, loading, error, load } = usePaged<SupportTicket>("sa-support");
+  const { data, q, setQ, st, setSt, page: _page, setPage, loading, error, load } = usePaged<SupportTicket>(
+    "sa-support",
+    "",
+    { sort: "attentionRank", order: "desc" },
+  );
   void _page;
   const [open, setOpen] = useState(false);
   const [subject, setSubject] = useState("");
+  const [body, setBody] = useState("");
+  const [tenantId, setTenantId] = useState("");
+  const [cafes, setCafes] = useState<Cafe[]>([]);
+  const [loadingCafes, setLoadingCafes] = useState(false);
+
+  useEffect(() => {
+    if (!open) return;
+    setLoadingCafes(true);
+    saFetch<PageResult<Cafe>>("sa-cafes", { query: { page: 1, limit: 200 } })
+      .then((r) => setCafes(r.items || []))
+      .catch(() => setCafes([]))
+      .finally(() => setLoadingCafes(false));
+  }, [open]);
 
   async function create() {
+    if (!subject.trim()) {
+      toast("موضوع تیکت را وارد کنید", "error");
+      return;
+    }
     try {
-      const res = await saFetch<{ ticket: SupportTicket }>("sa-support", { method: "POST", body: JSON.stringify({ subject }) });
+      const res = await saFetch<{ ticket: SupportTicket }>("sa-support", {
+        method: "POST",
+        body: JSON.stringify({
+          subject: subject.trim(),
+          body: body.trim(),
+          tenantId: tenantId || undefined,
+        }),
+      });
       toast("تیکت ساخته شد", "success");
       setOpen(false);
+      setSubject("");
+      setBody("");
+      setTenantId("");
       onNavigate(`/panel-admin/support/${res.ticket.id}/`);
     } catch {
       toast("ناموفق", "error");
     }
   }
 
+  const newCount = (data?.items || []).filter((t) => t.isNew).length;
+  const replyCount = (data?.items || []).filter((t) => t.needsAdminReply).length;
+
   return (
     <>
-      <PageHeader title="پشتیبانی" description="تیکت‌های اپراتورهای کافه" actions={<button type="button" className="sa-btn sa-btn-primary" onClick={() => setOpen(true)}>تیکت جدید</button>} />
+      <PageHeader
+        title="پشتیبانی"
+        description={
+          replyCount > 0
+            ? `${replyCount.toLocaleString("fa-IR")} تیکت نیاز به پاسخ دارد${newCount > 0 ? ` (${newCount.toLocaleString("fa-IR")} جدید)` : ""}`
+            : "تیکت‌های اپراتورهای کافه"
+        }
+        actions={<button type="button" className="sa-btn sa-btn-primary" onClick={() => setOpen(true)}>تیکت جدید</button>}
+      />
       <div className="sa-toolbar">
         <input className="sa-input" placeholder="جستجو…" value={q} onChange={(e) => { setPage(1); setQ(e.target.value); }} />
         <select className="sa-select" value={st} onChange={(e) => { setPage(1); setSt(e.target.value); }}>
           <option value="">همه</option>
+          <option value="needs_reply">نیاز به پاسخ</option>
           {["open", "in_progress", "waiting_customer", "resolved", "closed"].map((s) => (
             <option key={s} value={s}>{STATUS_OPT[s] || s}</option>
           ))}
@@ -693,13 +738,29 @@ export function SupportPage({ onNavigate }: { onNavigate: (href: string) => void
           <EmptyState title="تیکتی نیست" />
         ) : (
           <div className="sa-table-wrap">
-            <table className="sa-table">
-              <thead><tr><th>شناسه</th><th>موضوع</th><th>اولویت</th><th>وضعیت</th><th>ایجاد</th></tr></thead>
+            <table className="sa-table sa-table--tickets">
+              <thead><tr><th>شناسه</th><th>کافه</th><th>موضوع</th><th>اولویت</th><th>وضعیت</th><th>ایجاد</th></tr></thead>
               <tbody>
                 {data.items.map((t) => (
-                  <tr key={t.id} style={{ cursor: "pointer" }} onClick={() => onNavigate(`/panel-admin/support/${t.id}/`)}>
-                    <td data-label="شناسه">{t.id.slice(0, 12)}…</td>
-                    <td data-label="موضوع">{t.subject}</td>
+                  <tr
+                    key={t.id}
+                    className={[
+                      t.isNew ? "sa-ticket-row--new" : "",
+                      t.needsAdminReply && !t.isNew ? "sa-ticket-row--attention" : "",
+                    ].filter(Boolean).join(" ")}
+                    style={{ cursor: "pointer" }}
+                    onClick={() => onNavigate(`/panel-admin/support/${t.id}/`)}
+                  >
+                    <td data-label="شناسه">
+                      {t.isNew ? <span className="sa-ticket-dot" aria-hidden="true" /> : null}
+                      {t.id.slice(0, 12)}…
+                    </td>
+                    <td data-label="کافه">{t.cafeName || t.tenantId?.slice(0, 12) || "—"}</td>
+                    <td data-label="موضوع">
+                      <span className={t.isNew ? "sa-ticket-subject-new" : undefined}>{t.subject}</span>
+                      {t.isNew ? <span className="sa-ticket-new-pill">جدید</span> : null}
+                      {t.needsAdminReply && !t.isNew ? <span className="sa-ticket-reply-pill">نیاز به پاسخ</span> : null}
+                    </td>
                     <td data-label="اولویت"><Badge status={t.priority} /></td>
                     <td data-label="وضعیت"><Badge status={t.status} /></td>
                     <td data-label="ایجاد">{formatDate(t.createdAt)}</td>
@@ -710,11 +771,24 @@ export function SupportPage({ onNavigate }: { onNavigate: (href: string) => void
           </div>
         )}
       </div>
-      <Modal open={open} title="تیکت جدید" onClose={() => setOpen(false)}>
+      <Modal open={open} title="تیکت جدید برای کاربر" onClose={() => setOpen(false)}>
+        <div className="sa-field">
+          <label className="sa-label">کافه / کاربر</label>
+          <select className="sa-select" value={tenantId} onChange={(e) => setTenantId(e.target.value)} disabled={loadingCafes}>
+            <option value="">— عمومی (بدون کاربر مشخص) —</option>
+            {cafes.map((c) => (
+              <option key={c.id} value={c.id}>{c.name || c.id}</option>
+            ))}
+          </select>
+        </div>
         <div className="sa-field"><label className="sa-label">موضوع</label><input className="sa-input" value={subject} onChange={(e) => setSubject(e.target.value)} /></div>
+        <div className="sa-field">
+          <label className="sa-label">پیام برای کاربر</label>
+          <textarea className="sa-textarea" rows={4} value={body} onChange={(e) => setBody(e.target.value)} placeholder="متن پیام پشتیبانی…" />
+        </div>
         <div className="sa-modal-actions">
           <button type="button" className="sa-btn sa-btn-ghost" onClick={() => setOpen(false)}>انصراف</button>
-          <button type="button" className="sa-btn sa-btn-primary" onClick={create}>ایجاد</button>
+          <button type="button" className="sa-btn sa-btn-primary" onClick={create}>ارسال تیکت</button>
         </div>
       </Modal>
     </>
@@ -738,7 +812,11 @@ export function SupportDetailPage({ id, onNavigate }: { id: string; onNavigate: 
 
   return (
     <>
-      <PageHeader title={ticket?.subject || "تیکت"} description={id} actions={<button type="button" className="sa-btn sa-btn-ghost" onClick={() => onNavigate("/panel-admin/support/")}>← بازگشت</button>} />
+      <PageHeader
+        title={ticket?.subject || "تیکت"}
+        description={ticket?.cafeName ? `${ticket.cafeName}${ticket.cafeOwnerEmail ? ` · ${ticket.cafeOwnerEmail}` : ""}` : id}
+        actions={<button type="button" className="sa-btn sa-btn-ghost" onClick={() => onNavigate("/panel-admin/support/")}>← بازگشت</button>}
+      />
       <div className="sa-panel"><div className="sa-panel-body">
         {ticket ? (
           <>
@@ -819,6 +897,9 @@ export function SystemSettingsPage() {
   const [gracePeriodDays, setGracePeriodDays] = useState(3);
   const [supportPhone, setSupportPhone] = useState("");
   const [supportNote, setSupportNote] = useState("");
+  const [paymentCardNumber, setPaymentCardNumber] = useState("");
+  const [paymentCardHolder, setPaymentCardHolder] = useState("");
+  const [paymentInstructions, setPaymentInstructions] = useState("");
   const [reminderDays, setReminderDays] = useState("30, 7, 3, 1");
   const [loading, setLoading] = useState(true);
 
@@ -830,6 +911,9 @@ export function SystemSettingsPage() {
         setGracePeriodDays(Number(s.gracePeriodDays ?? 3));
         setSupportPhone(String(s.supportPhone ?? ""));
         setSupportNote(String(s.supportNote ?? ""));
+        setPaymentCardNumber(String(s.paymentCardNumber ?? ""));
+        setPaymentCardHolder(String(s.paymentCardHolder ?? ""));
+        setPaymentInstructions(String(s.paymentInstructions ?? ""));
         const rem = s.reminderDays;
         setReminderDays(Array.isArray(rem) ? rem.join(", ") : String(rem ?? "30, 7, 3, 1"));
       })
@@ -851,6 +935,9 @@ export function SystemSettingsPage() {
             gracePeriodDays,
             supportPhone,
             supportNote,
+            paymentCardNumber: paymentCardNumber.trim(),
+            paymentCardHolder: paymentCardHolder.trim(),
+            paymentInstructions: paymentInstructions.trim(),
             reminderDays: days,
             currency: "IRT",
           },
@@ -868,7 +955,7 @@ export function SystemSettingsPage() {
     <>
       <PageHeader
         title="تنظیمات پلتفرم"
-        description="دوره آزمایشی، یادآوری انقضا و پیام پشتیبانی فروشگاه"
+        description="دوره آزمایشی، پرداخت کارت‌به‌کارت، یادآوری انقضا و پیام فروشگاه"
         actions={
           <button type="button" className="sa-btn sa-btn-primary" onClick={save}>
             ذخیره
@@ -892,6 +979,30 @@ export function SystemSettingsPage() {
           <div className="sa-field">
             <label className="sa-label">شماره پشتیبانی</label>
             <input className="sa-input" value={supportPhone} onChange={(e) => setSupportPhone(e.target.value)} placeholder="۰۹۱۲…" />
+          </div>
+          <div className="sa-field">
+            <label className="sa-label">شماره کارت (پیش‌فرض برای درخواست‌ها)</label>
+            <input
+              className="sa-input"
+              dir="ltr"
+              value={paymentCardNumber}
+              onChange={(e) => setPaymentCardNumber(e.target.value)}
+              placeholder="6037-9977-XXXX-XXXX"
+            />
+          </div>
+          <div className="sa-field">
+            <label className="sa-label">نام صاحب کارت</label>
+            <input className="sa-input" value={paymentCardHolder} onChange={(e) => setPaymentCardHolder(e.target.value)} />
+          </div>
+          <div className="sa-field">
+            <label className="sa-label">راهنمای پرداخت (نمایش در حساب مشتری)</label>
+            <textarea
+              className="sa-textarea"
+              rows={3}
+              value={paymentInstructions}
+              onChange={(e) => setPaymentInstructions(e.target.value)}
+              placeholder="مبلغ را کارت‌به‌کارت کنید و سپس «پرداخت کردم» را بزنید."
+            />
           </div>
           <div className="sa-field">
             <label className="sa-label">متن راهنما در فروشگاه</label>

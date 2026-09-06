@@ -1,5 +1,7 @@
 "use client";
 
+/* eslint-disable @next/next/no-html-link-for-pages -- hash link back to landing pricing */
+
 import { BrandMark } from "@/components/panel-admin/BrandMark";
 
 import { useEffect, useState } from "react";
@@ -14,15 +16,20 @@ type CafeOwner = {
   tenantId?: string;
 };
 
+const CYCLE_LABEL: Record<string, string> = {
+  monthly: "ماهانه",
+  "6months": "۶ ماهه",
+  yearly: "سالانه",
+};
+
 export function LoginPage({
   onAdmin,
   onCafe,
-  onNavigate,
   initialMode = "login",
 }: {
   onAdmin: (admin: AdminUser) => void;
   onCafe: (owner: CafeOwner) => void;
-  onNavigate: (href: string) => void;
+  onNavigate?: (href: string) => void;
   initialMode?: "login" | "register";
 }) {
   const [mode, setMode] = useState<"login" | "register">(initialMode);
@@ -34,6 +41,14 @@ export function LoginPage({
   const [remember, setRemember] = useState(true);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
+  const [checkout, setCheckout] = useState<{ plan: string; cycle: string } | null>(null);
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const plan = params.get("plan");
+    const cycle = params.get("cycle");
+    if (plan) setCheckout({ plan, cycle: cycle || "monthly" });
+  }, []);
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
@@ -98,6 +113,17 @@ export function LoginPage({
         <p className="sa-login-sub">
           {mode === "login" ? "ورود به حساب اشتراک" : "ثبت‌نام کافه / رستوران"}
         </p>
+        {checkout ? (
+          <div className="sa-login-checkout" role="status">
+            برای تکمیل خرید پلن، {mode === "login" ? "وارد شوید" : "ثبت‌نام کنید"}.
+            {checkout.cycle ? (
+              <span className="sa-login-checkout-meta">
+                {" "}
+                (دوره: {CYCLE_LABEL[checkout.cycle] || checkout.cycle})
+              </span>
+            ) : null}
+          </div>
+        ) : null}
         {error ? <div className="sa-login-error">{error}</div> : null}
 
         {mode === "register" ? (
@@ -170,9 +196,9 @@ export function LoginPage({
             </>
           )}
           <div style={{ marginTop: 10 }}>
-            <button type="button" className="sa-forgot" onClick={() => onNavigate("/panel-admin/")}>
+            <a href="/#plans" className="sa-forgot">
               بازگشت به فروشگاه پلن‌ها
-            </button>
+            </a>
           </div>
         </div>
       </form>

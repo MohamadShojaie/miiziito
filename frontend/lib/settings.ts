@@ -1,5 +1,6 @@
 import { SITE_CONFIG } from "./config";
 import { DEFAULT_CAFE_NAME_EN, DEFAULT_CAFE_NAME_FA } from "./brand";
+import { getMenuTenantSlug } from "./tenant";
 
 export type MenuStructureId =
   | "classic"
@@ -94,6 +95,37 @@ export const DEFAULT_SITE_SETTINGS: SiteSettings = {
   updatedAt: 0,
 };
 
+/** Clean defaults for SaaS tenant cafes (no Buzz/demo branding). */
+export function tenantDefaultSiteSettings(
+  nameFa = DEFAULT_CAFE_NAME_FA,
+  nameEn = DEFAULT_CAFE_NAME_EN
+): SiteSettings {
+  return {
+    restaurantNameFa: nameFa,
+    restaurantNameEn: nameEn,
+    tagline: "",
+    address: "",
+    phone: "",
+    logo: "",
+    backgroundImage: "",
+    primary: "#566347",
+    secondary: "#D8DAD3",
+    creditName: "",
+    telegram: "",
+    email: "",
+    showNewSection: true,
+    showFooterCredit: true,
+    showContactOnMenu: false,
+    showLogoOnMenu: true,
+    showLogoOnReceipt: false,
+    showContactOnReceipt: true,
+    receiptFooterMessage: "",
+    showBackgroundOnMenu: true,
+    menuStructure: "classic",
+    updatedAt: 0,
+  };
+}
+
 const HEX_COLOR = /^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/;
 const MENU_STRUCTURE_IDS = new Set(
   MENU_STRUCTURE_OPTIONS.map((opt) => opt.id)
@@ -126,63 +158,87 @@ export function normalizeHexColor(raw: string, fallback: string): string {
   return v.toUpperCase();
 }
 
-export function mergeSiteSettings(
-  raw?: Partial<SiteSettings> | null
+export function settingsBaseForContext(
+  nameFa?: string,
+  nameEn?: string
 ): SiteSettings {
-  const base = { ...DEFAULT_SITE_SETTINGS };
-  if (!raw || typeof raw !== "object") return base;
+  if (getMenuTenantSlug()) {
+    return tenantDefaultSiteSettings(
+      nameFa || DEFAULT_CAFE_NAME_FA,
+      nameEn || nameFa || DEFAULT_CAFE_NAME_EN
+    );
+  }
+  return DEFAULT_SITE_SETTINGS;
+}
+
+export function mergeSiteSettings(
+  raw?: Partial<SiteSettings> | null,
+  base?: SiteSettings
+): SiteSettings {
+  const b = base ?? settingsBaseForContext();
+  if (!raw || typeof raw !== "object") return b;
+
+  const src = raw as Partial<SiteSettings> & Record<string, unknown>;
 
   return {
-    restaurantNameFa: clip(raw.restaurantNameFa, base.restaurantNameFa, 80),
-    restaurantNameEn: clip(raw.restaurantNameEn, base.restaurantNameEn, 80),
-    tagline: clip(raw.tagline, base.tagline, 200),
-    address: clipOptional(raw.address, 200),
-    phone: clipOptional(raw.phone, 40),
-    logo: normalizeAssetPath(raw.logo),
-    backgroundImage: normalizeAssetPath(raw.backgroundImage),
-    primary: normalizeHexColor(String(raw.primary || ""), base.primary),
-    secondary: normalizeHexColor(String(raw.secondary || ""), base.secondary),
-    creditName: clip(raw.creditName, base.creditName, 120),
-    telegram: clip(raw.telegram, base.telegram, 200),
-    email: clip(raw.email, base.email, 120),
+    restaurantNameFa: clip(src.restaurantNameFa, b.restaurantNameFa, 80),
+    restaurantNameEn: clip(src.restaurantNameEn, b.restaurantNameEn, 80),
+    tagline: clip(src.tagline, b.tagline, 200),
+    address: clipOptional(src.address, 200),
+    phone: clipOptional(src.phone, 40),
+    logo: normalizeAssetPath(src.logo ?? src.logoUrl),
+    backgroundImage: normalizeAssetPath(
+      src.backgroundImage ?? src.backgroundUrl
+    ),
+    primary: normalizeHexColor(
+      String(src.primary ?? src.primaryColor ?? ""),
+      b.primary
+    ),
+    secondary: normalizeHexColor(
+      String(src.secondary ?? src.secondaryColor ?? ""),
+      b.secondary
+    ),
+    creditName: clip(src.creditName, b.creditName, 120),
+    telegram: clip(src.telegram, b.telegram, 200),
+    email: clip(src.email, b.email, 120),
     showNewSection:
-      typeof raw.showNewSection === "boolean"
-        ? raw.showNewSection
-        : base.showNewSection,
+      typeof src.showNewSection === "boolean"
+        ? src.showNewSection
+        : b.showNewSection,
     showFooterCredit:
-      typeof raw.showFooterCredit === "boolean"
-        ? raw.showFooterCredit
-        : base.showFooterCredit,
+      typeof src.showFooterCredit === "boolean"
+        ? src.showFooterCredit
+        : b.showFooterCredit,
     showContactOnMenu:
-      typeof raw.showContactOnMenu === "boolean"
-        ? raw.showContactOnMenu
-        : base.showContactOnMenu,
+      typeof src.showContactOnMenu === "boolean"
+        ? src.showContactOnMenu
+        : b.showContactOnMenu,
     showLogoOnMenu:
-      typeof raw.showLogoOnMenu === "boolean"
-        ? raw.showLogoOnMenu
-        : base.showLogoOnMenu,
+      typeof src.showLogoOnMenu === "boolean"
+        ? src.showLogoOnMenu
+        : b.showLogoOnMenu,
     showLogoOnReceipt:
-      typeof raw.showLogoOnReceipt === "boolean"
-        ? raw.showLogoOnReceipt
-        : base.showLogoOnReceipt,
+      typeof src.showLogoOnReceipt === "boolean"
+        ? src.showLogoOnReceipt
+        : b.showLogoOnReceipt,
     showContactOnReceipt:
-      typeof raw.showContactOnReceipt === "boolean"
-        ? raw.showContactOnReceipt
-        : base.showContactOnReceipt,
+      typeof src.showContactOnReceipt === "boolean"
+        ? src.showContactOnReceipt
+        : b.showContactOnReceipt,
     receiptFooterMessage: clip(
-      raw.receiptFooterMessage,
-      base.receiptFooterMessage,
+      src.receiptFooterMessage,
+      b.receiptFooterMessage,
       120
     ),
     showBackgroundOnMenu:
-      typeof raw.showBackgroundOnMenu === "boolean"
-        ? raw.showBackgroundOnMenu
-        : base.showBackgroundOnMenu,
-    menuStructure: normalizeMenuStructure(raw.menuStructure, base.menuStructure),
+      typeof src.showBackgroundOnMenu === "boolean"
+        ? src.showBackgroundOnMenu
+        : b.showBackgroundOnMenu,
+    menuStructure: normalizeMenuStructure(src.menuStructure, b.menuStructure),
     updatedAt:
-      typeof raw.updatedAt === "number" && raw.updatedAt > 0
-        ? raw.updatedAt
-        : base.updatedAt,
+      typeof src.updatedAt === "number" && src.updatedAt > 0
+        ? src.updatedAt
+        : b.updatedAt,
   };
 }
 
