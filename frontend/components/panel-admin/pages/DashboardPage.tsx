@@ -173,7 +173,7 @@ export function DashboardPage({ onNavigate }: { onNavigate: (href: string) => vo
             <table className="sa-table">
               <thead>
                 <tr>
-                  <th>شناسه</th>
+                  <th>کافه</th>
                   <th>مبلغ</th>
                   <th>وضعیت</th>
                   <th>تاریخ</th>
@@ -182,7 +182,7 @@ export function DashboardPage({ onNavigate }: { onNavigate: (href: string) => vo
               <tbody>
                 {data.recentPayments.map((p) => (
                   <tr key={p.id}>
-                    <td data-label="شناسه">{p.id}</td>
+                    <td data-label="کافه">{p.cafeName || p.id}</td>
                     <td data-label="مبلغ">{formatMoney(p.amount, p.currency)}</td>
                     <td data-label="وضعیت">
                       <Badge status={p.status} />

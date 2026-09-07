@@ -10,9 +10,9 @@ export function CashierLoginModal({
   onSuccess,
   onClose,
   closeHref,
-  title = "ورود صندوقدار",
-  hint = "رمز عبور را وارد کنید",
-  submitLabel = "ورود به پنل",
+  title = "ورود به پنل مدیریت",
+  hint = "",
+  submitLabel = "ورود",
 }: {
   tenantSlug?: string;
   onSuccess?: () => void;
@@ -23,6 +23,7 @@ export function CashierLoginModal({
   submitLabel?: string;
 }) {
   const [password, setPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
   const [loginError, setLoginError] = useState(false);
   const [loginBusy, setLoginBusy] = useState(false);
 
@@ -59,7 +60,7 @@ export function CashierLoginModal({
 
   return (
     <div className="modal-overlay cp-modal-overlay is-open">
-      <div className="modal-card cp-modal" role="dialog">
+      <div className="modal-card cp-modal cashier-login-modal" role="dialog" aria-labelledby="cashier-login-title">
         {onClose ? (
           <button type="button" className="modal-close" aria-label="بستن" onClick={onClose}>
             ×
@@ -69,33 +70,68 @@ export function CashierLoginModal({
             ×
           </Link>
         ) : null}
-        <h2 className="modal-title">{title}</h2>
-        <p className="modal-hint">{hint}</p>
+        <h2 id="cashier-login-title" className="modal-title">
+          {title}
+        </h2>
+        {hint.trim() ? <p className="modal-hint">{hint.trim()}</p> : null}
         <form className="cashier-login-form" onSubmit={login}>
-          <label className="sr-only" htmlFor="cashier-password">
+          <label className="modal-field-label" htmlFor="cashier-password">
             رمز عبور
           </label>
-          <input
-            type="password"
-            id="cashier-password"
-            className="modal-input"
-            placeholder="رمز عبور"
-            autoComplete="current-password"
-            required
-            value={password}
-            disabled={loginBusy}
-            onChange={(e) => setPassword(e.target.value)}
-            autoFocus
-          />
-          <p className="modal-error" hidden={!loginError}>
-            رمز اشتباه است
-          </p>
+          <div className="cashier-login-password">
+            <input
+              type={showPassword ? "text" : "password"}
+              id="cashier-password"
+              className="modal-input"
+              placeholder="رمز پنل مدیریت"
+              autoComplete="current-password"
+              required
+              value={password}
+              disabled={loginBusy}
+              onChange={(e) => {
+                setPassword(e.target.value);
+                if (loginError) setLoginError(false);
+              }}
+              autoFocus
+            />
+            <button
+              type="button"
+              className="cashier-login-eye"
+              onClick={() => setShowPassword((v) => !v)}
+              aria-label={showPassword ? "مخفی کردن رمز" : "نمایش رمز"}
+              title={showPassword ? "مخفی کردن رمز" : "نمایش رمز"}
+              tabIndex={-1}
+            >
+              {showPassword ? (
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                  <path
+                    d="M3 3l18 18M10.6 10.6a2 2 0 002.8 2.8M9.9 5.1A9.8 9.8 0 0112 5c5 0 9.3 3.1 11 7.5a11.7 11.7 0 01-4.2 5.1M6.1 6.1A11.7 11.7 0 001 12.5C2.7 16.9 7 20 12 20c1.7 0 3.3-.4 4.7-1"
+                    stroke="currentColor"
+                    strokeWidth="1.8"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  />
+                </svg>
+              ) : (
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                  <path
+                    d="M1 12.5C2.7 8.1 7 5 12 5s9.3 3.1 11 7.5c-1.7 4.4-6 7.5-11 7.5S2.7 16.9 1 12.5z"
+                    stroke="currentColor"
+                    strokeWidth="1.8"
+                    strokeLinejoin="round"
+                  />
+                  <circle cx="12" cy="12.5" r="3" stroke="currentColor" strokeWidth="1.8" />
+                </svg>
+              )}
+            </button>
+          </div>
+          {loginError ? <p className="modal-error">رمز عبور اشتباه است</p> : null}
           <button
             type="submit"
             className={`modal-submit cp-btn cp-btn--primary cp-btn--block${loginBusy ? " is-loading" : ""}`}
-            disabled={loginBusy}
+            disabled={loginBusy || !password.trim()}
           >
-            {submitLabel}
+            {loginBusy ? "در حال ورود…" : submitLabel}
           </button>
         </form>
       </div>

@@ -341,9 +341,9 @@ export function PaymentsPage({ initialStatus = "", onNavigate }: { initialStatus
 
   return (
     <>
-      <PageHeader title="پرداخت‌ها" description="تاریخچه صورتحساب اشتراک پلتفرم" />
+      <PageHeader title="پرداخت‌ها" description="پرداخت‌های تأییدشده و فعال‌سازی اشتراک" />
       <div className="sa-toolbar">
-        <input className="sa-input" placeholder="جستجو…" value={q} onChange={(e) => { setPage(1); setQ(e.target.value); }} />
+        <input className="sa-input" placeholder="جستجو کافه، ایمیل، مرجع…" value={q} onChange={(e) => { setPage(1); setQ(e.target.value); }} />
         <select className="sa-select" value={st} onChange={(e) => { setPage(1); setSt(e.target.value); }}>
           <option value="">همه</option>
           {["successful", "pending", "failed", "refunded", "cancelled", "unknown"].map((s) => (
@@ -353,24 +353,43 @@ export function PaymentsPage({ initialStatus = "", onNavigate }: { initialStatus
       </div>
       <div className="sa-panel">
         {loading ? <SkeletonTable /> : error ? <ErrorBox message={error} onRetry={load} /> : !data?.items?.length ? (
-          <EmptyState title="پرداختی نیست" />
+          <EmptyState title="پرداختی نیست" description="بعد از تأیید درخواست خرید، پرداخت اینجا ثبت می‌شود." />
         ) : (
           <div className="sa-table-wrap">
             <table className="sa-table">
               <thead>
                 <tr>
-                  <th>شناسه</th><th>مبلغ</th><th>روش</th><th>مرجع</th><th>وضعیت</th><th>تاریخ</th><th></th>
+                  <th>کافه</th>
+                  <th>مشتری</th>
+                  <th>پلن</th>
+                  <th>مبلغ</th>
+                  <th>مرجع واریز</th>
+                  <th>وضعیت</th>
+                  <th>تاریخ تأیید</th>
+                  <th></th>
                 </tr>
               </thead>
               <tbody>
                 {data.items.map((p) => (
                   <tr key={p.id}>
-                    <td data-label="شناسه"><button type="button" className="sa-btn sa-btn-ghost sa-btn-sm" onClick={() => onNavigate(`/panel-admin/payments/${p.id}/`)}>{p.id.slice(0, 12)}…</button></td>
+                    <td data-label="کافه">
+                      <button type="button" className="sa-btn sa-btn-ghost sa-btn-sm" onClick={() => onNavigate(`/panel-admin/payments/${p.id}/`)}>
+                        {p.cafeName || p.tenantId || p.id.slice(0, 12)}
+                      </button>
+                    </td>
+                    <td data-label="مشتری">
+                      <div className="sa-ticket-user-cell">
+                        <strong>{p.ownerName || "—"}</strong>
+                        <span className="sa-cafe-meta">{p.email || "—"}</span>
+                      </div>
+                    </td>
+                    <td data-label="پلن">
+                      {(p.planName || p.planId || "—") + (p.billingCycle ? ` · ${CYCLE_LABEL[p.billingCycle] || p.billingCycle}` : "")}
+                    </td>
                     <td data-label="مبلغ">{formatMoney(p.amount, p.currency)}</td>
-                    <td data-label="روش">{PAYMENT_METHOD_FA[p.paymentMethod] || p.paymentMethod || "—"}</td>
-                    <td data-label="مرجع">{p.referenceNumber || "—"}</td>
+                    <td data-label="مرجع واریز" dir="ltr">{p.referenceNumber || "—"}</td>
                     <td data-label="وضعیت"><Badge status={p.status} /></td>
-                    <td data-label="تاریخ">{formatDate(p.createdAt)}</td>
+                    <td data-label="تاریخ تأیید">{formatDate(p.createdAt)}</td>
                     <td data-label="اقدامات">
                       {p.status === "successful" ? (
                         <button type="button" className="sa-btn sa-btn-ghost sa-btn-sm" onClick={() => refund(p.id)}>استرداد</button>
@@ -394,16 +413,20 @@ export function PaymentDetailPage({ id, onNavigate }: { id: string; onNavigate: 
   }, [id]);
   return (
     <>
-      <PageHeader title="پرداخت" description={id} actions={<button type="button" className="sa-btn sa-btn-ghost" onClick={() => onNavigate("/panel-admin/payments/")}>← بازگشت</button>} />
+      <PageHeader title="پرداخت" description={p?.cafeName || id} actions={<button type="button" className="sa-btn sa-btn-ghost" onClick={() => onNavigate("/panel-admin/payments/")}>← بازگشت</button>} />
       <div className="sa-panel"><div className="sa-panel-body">
         {p ? (
           <div className="sa-detail-grid">
+            <div className="sa-detail-item"><label>کافه</label><strong>{p.cafeName || "—"}</strong></div>
+            <div className="sa-detail-item"><label>مشتری</label><strong>{p.ownerName || "—"}</strong></div>
+            <div className="sa-detail-item"><label>ایمیل</label><strong>{p.email || "—"}</strong></div>
+            <div className="sa-detail-item"><label>پلن</label><strong>{(p.planName || p.planId || "—") + (p.billingCycle ? ` · ${CYCLE_LABEL[p.billingCycle] || p.billingCycle}` : "")}</strong></div>
             <div className="sa-detail-item"><label>مبلغ</label><strong>{formatMoney(p.amount, p.currency)}</strong></div>
             <div className="sa-detail-item"><label>وضعیت</label><strong><Badge status={p.status} /></strong></div>
             <div className="sa-detail-item"><label>درگاه</label><strong>{PROVIDER_FA[p.provider] || p.provider || "—"}</strong></div>
             <div className="sa-detail-item"><label>روش</label><strong>{PAYMENT_METHOD_FA[p.paymentMethod] || p.paymentMethod || "—"}</strong></div>
-            <div className="sa-detail-item"><label>مرجع</label><strong>{p.referenceNumber || "—"}</strong></div>
-            <div className="sa-detail-item"><label>تاریخ</label><strong>{formatDate(p.createdAt)}</strong></div>
+            <div className="sa-detail-item"><label>مرجع واریز</label><strong dir="ltr">{p.referenceNumber || "—"}</strong></div>
+            <div className="sa-detail-item"><label>تاریخ تأیید</label><strong>{formatDate(p.createdAt)}</strong></div>
           </div>
         ) : <EmptyState title="یافت نشد" />}
       </div></div>

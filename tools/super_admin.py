@@ -1250,10 +1250,99 @@ def _filter_page(items: list, qs: dict, search_fields: list[str]) -> dict:
     }
 
 
+def _payment_from_fulfilled_request(req: dict) -> dict:
+    created = str(req.get("fulfilledAt") or req.get("paymentSubmittedAt") or req.get("updatedAt") or _iso())
+    return {
+        "id": _new_id("pay"),
+        "tenantId": str(req.get("tenantId") or ""),
+        "subscriptionId": req.get("subscriptionId"),
+        "requestId": req.get("id"),
+        "amount": int(req.get("price") or 0),
+        "currency": str(req.get("currency") or "IRT"),
+        "status": "successful",
+        "provider": "manual",
+        "providerTransactionId": None,
+        "referenceNumber": str(req.get("userPaymentReference") or req.get("id") or ""),
+        "paymentMethod": "bank_transfer",
+        "planId": req.get("planId"),
+        "planName": req.get("planName") or "",
+        "billingCycle": req.get("billingCycle"),
+        "cafeName": req.get("cafeName") or "",
+        "ownerName": req.get("ownerName") or "",
+        "email": req.get("email") or "",
+        "phone": req.get("phone") or "",
+        "createdAt": created,
+        "updatedAt": _iso(),
+    }
+
+
+def _ensure_payment_for_request(req: dict) -> dict | None:
+    """Create a saas_payments row for a fulfilled recharge request if missing."""
+    if not isinstance(req, dict) or str(req.get("status") or "") != "fulfilled":
+        return None
+    req_id = str(req.get("id") or "")
+    if not req_id:
+        return None
+    payments = load_collection("saas_payments", [])
+    if not isinstance(payments, list):
+        payments = []
+    for p in payments:
+        if isinstance(p, dict) and str(p.get("requestId") or "") == req_id:
+            return None
+    payment = _payment_from_fulfilled_request(req)
+    payments.append(payment)
+    save_collection("saas_payments", payments)
+    return payment
+
+
+def _sync_payments_from_fulfilled_requests() -> list:
+    """Backfill successful payments from fulfilled purchase/recharge requests."""
+    reqs = load_collection("recharge_requests", [])
+    if not isinstance(reqs, list):
+        reqs = []
+    for req in reqs:
+        if isinstance(req, dict) and str(req.get("status") or "") == "fulfilled":
+            _ensure_payment_for_request(req)
+    payments = load_collection("saas_payments", [])
+    return payments if isinstance(payments, list) else []
+
+
+def _enrich_saas_payments(payments: list) -> list:
+    cafes = load_collection("cafes", [])
+    if not isinstance(cafes, list):
+        cafes = []
+    cafe_by_id = {str(c.get("id")): c for c in cafes if isinstance(c, dict) and c.get("id")}
+    plans = load_collection("plans", [])
+    if not isinstance(plans, list):
+        plans = []
+    plan_by_id = {str(p.get("id")): p for p in plans if isinstance(p, dict) and p.get("id")}
+    out = []
+    for p in payments:
+        if not isinstance(p, dict):
+            continue
+        row = dict(p)
+        cafe = cafe_by_id.get(str(row.get("tenantId") or ""))
+        if cafe:
+            if not row.get("cafeName"):
+                row["cafeName"] = cafe.get("name") or ""
+            if not row.get("ownerName"):
+                row["ownerName"] = cafe.get("ownerName") or ""
+            if not row.get("email"):
+                row["email"] = cafe.get("email") or ""
+            if not row.get("phone"):
+                row["phone"] = cafe.get("phone") or ""
+        plan = plan_by_id.get(str(row.get("planId") or ""))
+        if plan and not row.get("planName"):
+            row["planName"] = plan.get("name") or ""
+        out.append(row)
+    out.sort(key=lambda x: str(x.get("createdAt") or ""), reverse=True)
+    return out
+
+
 def _dashboard_kpis() -> dict:
     cafes = load_collection("cafes", [])
     subs = load_collection("subscriptions", [])
-    payments = load_collection("saas_payments", [])
+    payments = _enrich_saas_payments(_sync_payments_from_fulfilled_requests())
     if not isinstance(cafes, list):
         cafes = []
     if not isinstance(subs, list):
@@ -1885,6 +1974,10 @@ def handle(
             req["userPaymentNote"] = str(
                 body.get("note") or body.get("userPaymentNote") or ""
             ).strip()
+            req["userPaymentDate"] = str(body.get("paymentDate") or body.get("userPaymentDate") or "").strip()
+            req["userPaymentTime"] = str(body.get("paymentTime") or body.get("userPaymentTime") or "").strip()
+            if not req["userPaymentDate"] or not req["userPaymentTime"]:
+                return {"status": 400, "body": {"error": "missing_payment_datetime"}}
             req["paymentSubmittedAt"] = _iso()
             req["updatedAt"] = _iso()
             reqs[idx] = req
@@ -2009,6 +2102,7 @@ def handle(
                 access_ticket = _send_access_ticket(fulfilled_cafe)
                 if access_ticket and access_ticket.get("id"):
                     req["accessTicketId"] = access_ticket["id"]
+            _ensure_payment_for_request(req)
             _audit(
                 admin,
                 "fulfill_recharge_request",
@@ -2417,11 +2511,11 @@ def handle(
         admin, err = require_admin(headers, body, "payments.read")
         if err:
             return err
-        payments = load_collection("saas_payments", [])
-        if not isinstance(payments, list):
-            payments = []
+        payments = _enrich_saas_payments(_sync_payments_from_fulfilled_requests())
         return {"status": 200, "body": _filter_page(
-            payments, qs, ["id", "tenantId", "referenceNumber", "provider", "status"]
+            payments,
+            qs,
+            ["id", "tenantId", "referenceNumber", "provider", "status", "cafeName", "ownerName", "email", "planName", "planId"],
         )}
 
     if route == "sa-payments" and method == "POST":
@@ -2481,8 +2575,8 @@ def handle(
         admin, err = require_admin(headers, body, "payments.read")
         if err:
             return err
-        payments = load_collection("saas_payments", [])
-        for p in payments if isinstance(payments, list) else []:
+        payments = _enrich_saas_payments(_sync_payments_from_fulfilled_requests())
+        for p in payments:
             if p.get("id") == item_id:
                 return {"status": 200, "body": {"payment": p}}
         return {"status": 404, "body": {"error": "not_found"}}

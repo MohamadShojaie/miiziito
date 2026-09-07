@@ -521,7 +521,6 @@ export function CustomerMenu({ tenantSlug = "" }: { tenantSlug?: string }) {
         <CashierLoginModal
           tenantSlug={tenantSlug}
           title="ورود به پنل مدیریت"
-          hint="رمز پنل صندوقدار این کافه را وارد کنید"
           submitLabel="ورود"
           onClose={() => setAdminLoginOpen(false)}
           onSuccess={() => {

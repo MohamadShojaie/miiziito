@@ -3,6 +3,8 @@
 import { useEffect, useState } from "react";
 import { saFetch } from "@/lib/super-admin/api";
 import { formatDate, formatMoney } from "@/lib/super-admin/format";
+import { formatJalaliIso } from "@/lib/jalali";
+import { toPersianDigits } from "@/lib/format";
 import { toast } from "../ui/Toast";
 import { Badge, EmptyState, ErrorBox, Modal, PageHeader, SkeletonTable } from "../ui/primitives";
 
@@ -21,6 +23,8 @@ type RecReq = {
   adminNote?: string;
   userPaymentReference?: string;
   userPaymentNote?: string;
+  userPaymentDate?: string;
+  userPaymentTime?: string;
   paymentCardNumber?: string;
   createdAt: string;
   tenantId?: string;
@@ -230,6 +234,14 @@ export function RechargeRequestsPage() {
                       {r.status === "payment_submitted" && r.userPaymentReference ? (
                         <div style={{ fontSize: "0.75rem", marginTop: 4 }}>
                           پیگیری: {r.userPaymentReference}
+                          {r.userPaymentDate || r.userPaymentTime
+                            ? ` · زمان واریز: ${[
+                                r.userPaymentDate ? formatJalaliIso(r.userPaymentDate) : "",
+                                r.userPaymentTime ? toPersianDigits(r.userPaymentTime) : "",
+                              ]
+                                .filter(Boolean)
+                                .join(" — ")}`
+                            : ""}
                           {r.userPaymentNote ? ` — ${r.userPaymentNote}` : ""}
                         </div>
                       ) : null}

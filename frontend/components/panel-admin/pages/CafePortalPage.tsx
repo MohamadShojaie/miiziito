@@ -2,12 +2,16 @@
 
 import { BrandMark } from "@/components/panel-admin/BrandMark";
 import { AccessCredentialsCard } from "@/components/panel-admin/AccessCredentialsCard";
+import { JalaliDatePicker } from "@/components/ui/JalaliDatePicker";
+import { SaTimePicker } from "@/components/panel-admin/ui/SaTimePicker";
+import { SaPasswordField } from "@/components/panel-admin/ui/SaPasswordField";
 
 import { useEffect, useMemo, useState } from "react";
 import { resolveAccessPayload } from "@/lib/super-admin/access-message";
 import { PANEL_GUIDE_PATH } from "@/lib/super-admin/access-message";
 import { saFetch } from "@/lib/super-admin/api";
 import { formatDate, formatDateTime, formatMoney } from "@/lib/super-admin/format";
+import { startOfDayMs, toIsoDate } from "@/lib/jalali";
 import { cafeCashierUrl, cafeMenuUrl } from "@/lib/super-admin/tenant-urls";
 import type { Cafe, Plan, Subscription, SupportTicket } from "@/lib/super-admin/types";
 import { toast } from "../ui/Toast";
@@ -28,6 +32,8 @@ type RequestRow = {
   adminNote?: string;
   userPaymentReference?: string;
   userPaymentNote?: string;
+  userPaymentDate?: string;
+  userPaymentTime?: string;
 };
 
 const REQUEST_STEPS = [
@@ -116,6 +122,11 @@ export function CafePortalPage({
   const [sending, setSending] = useState(false);
   const [paymentRef, setPaymentRef] = useState("");
   const [paymentNote, setPaymentNote] = useState("");
+  const [paymentDate, setPaymentDate] = useState(() => new Date().toISOString().slice(0, 10));
+  const [paymentTime, setPaymentTime] = useState(() => {
+    const d = new Date();
+    return `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
+  });
   const [confirmingPay, setConfirmingPay] = useState(false);
   const [paymentInstructions, setPaymentInstructions] = useState("");
   const [supportPhone, setSupportPhone] = useState("");
@@ -199,6 +210,14 @@ export function CafePortalPage({
 
   async function confirmPayment() {
     if (!activeRequest) return;
+    if (!paymentRef.trim()) {
+      toast("شماره پیگیری را وارد کنید", "error");
+      return;
+    }
+    if (!paymentDate.trim() || !paymentTime.trim()) {
+      toast("تاریخ و ساعت واریز را وارد کنید", "error");
+      return;
+    }
     setConfirmingPay(true);
     try {
       await saFetch("sa-recharge-request", {
@@ -208,6 +227,8 @@ export function CafePortalPage({
           action: "confirm_payment",
           paymentReference: paymentRef.trim(),
           note: paymentNote.trim(),
+          paymentDate: paymentDate.trim(),
+          paymentTime: paymentTime.trim(),
         }),
       });
       toast("پرداخت ثبت شد. پس از تأیید، حساب فعال می‌شود.", "success");
@@ -451,21 +472,17 @@ export function CafePortalPage({
             </p>
             <div className="sa-field">
               <label className="sa-label">رمز فعلی</label>
-              <input
-                className="sa-input"
-                type="password"
+              <SaPasswordField
                 value={accountCurrent}
-                onChange={(e) => setAccountCurrent(e.target.value)}
+                onChange={setAccountCurrent}
                 autoComplete="current-password"
               />
             </div>
             <div className="sa-field">
               <label className="sa-label">رمز جدید</label>
-              <input
-                className="sa-input"
-                type="password"
+              <SaPasswordField
                 value={accountNew}
-                onChange={(e) => setAccountNew(e.target.value)}
+                onChange={setAccountNew}
                 autoComplete="new-password"
               />
             </div>
@@ -490,21 +507,17 @@ export function CafePortalPage({
             </p>
             <div className="sa-field">
               <label className="sa-label">رمز فعلی</label>
-              <input
-                className="sa-input"
-                type="password"
+              <SaPasswordField
                 value={cashierCurrent}
-                onChange={(e) => setCashierCurrent(e.target.value)}
+                onChange={setCashierCurrent}
                 autoComplete="current-password"
               />
             </div>
             <div className="sa-field">
               <label className="sa-label">رمز جدید</label>
-              <input
-                className="sa-input"
-                type="password"
+              <SaPasswordField
                 value={cashierNew}
-                onChange={(e) => setCashierNew(e.target.value)}
+                onChange={setCashierNew}
                 autoComplete="new-password"
               />
             </div>
@@ -599,8 +612,28 @@ export function CafePortalPage({
                         <p style={{ margin: "8px 0 0", color: "var(--sa-text-muted)" }}>{activeRequest.adminNote}</p>
                       ) : null}
                       <div className="sa-field" style={{ marginTop: 12 }}>
-                        <label className="sa-label">شماره پیگیری / ۴ رقم آخر کارت</label>
-                        <input className="sa-input" value={paymentRef} onChange={(e) => setPaymentRef(e.target.value)} />
+                        <label className="sa-label">شماره پیگیری</label>
+                        <input className="sa-input" value={paymentRef} onChange={(e) => setPaymentRef(e.target.value)} required />
+                      </div>
+                      <div className="sa-datetime-row">
+                        <div className="sa-field sa-datetime-field">
+                          <JalaliDatePicker
+                            label="تاریخ واریز (شمسی)"
+                            value={paymentDate}
+                            maxDate={toIsoDate(startOfDayMs())}
+                            spanPastYears={1}
+                            spanFutureYears={0}
+                            placeholder="انتخاب تاریخ شمسی"
+                            onChange={setPaymentDate}
+                          />
+                        </div>
+                        <div className="sa-field sa-datetime-field">
+                          <SaTimePicker
+                            label="ساعت واریز"
+                            value={paymentTime}
+                            onChange={setPaymentTime}
+                          />
+                        </div>
                       </div>
                       <div className="sa-field">
                         <label className="sa-label">توضیح (اختیاری)</label>
@@ -609,7 +642,7 @@ export function CafePortalPage({
                       <button
                         type="button"
                         className="sa-btn sa-btn-primary"
-                        disabled={confirmingPay || !paymentRef.trim()}
+                        disabled={confirmingPay || !paymentRef.trim() || !paymentDate.trim() || !paymentTime.trim()}
                         onClick={confirmPayment}
                       >
                         {confirmingPay ? "در حال ثبت…" : "پرداخت کردم"}

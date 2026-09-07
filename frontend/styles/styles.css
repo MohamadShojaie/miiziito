@@ -2169,6 +2169,43 @@ body:has(.modal-overlay.is-open) .float-reserve {
   gap: 0.65rem;
 }
 
+.cashier-login-modal .modal-field-label {
+  text-align: right;
+  margin: 0.15rem 0 0;
+}
+
+.cashier-login-password {
+  position: relative;
+}
+
+.cashier-login-password .modal-input {
+  padding-left: 2.75rem;
+  text-align: right;
+}
+
+.cashier-login-eye {
+  position: absolute;
+  left: 0.55rem;
+  top: 50%;
+  transform: translateY(-50%);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2rem;
+  height: 2rem;
+  padding: 0;
+  border: none;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+}
+
+.cashier-login-eye:hover {
+  color: var(--primary, #c9a227);
+  background: color-mix(in srgb, var(--primary, #c9a227) 14%, transparent);
+}
+
 .modal-input {
   width: 100%;
   padding: 0.85rem 0.95rem;

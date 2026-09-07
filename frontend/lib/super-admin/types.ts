@@ -81,6 +81,7 @@ export type SaasPayment = {
   id: string;
   tenantId: string;
   subscriptionId?: string | null;
+  requestId?: string | null;
   amount: number;
   currency: string;
   status: string;
@@ -88,7 +89,12 @@ export type SaasPayment = {
   referenceNumber?: string;
   paymentMethod: string;
   planId?: string;
+  planName?: string;
   billingCycle?: string;
+  cafeName?: string;
+  ownerName?: string;
+  email?: string;
+  phone?: string;
   createdAt: string;
 };
 

@@ -154,6 +154,8 @@ export function CashierApp({ tenantSlug = "" }: { tenantSlug?: string }) {
     return (
       <CashierLoginModal
         tenantSlug={tenantSlug}
+        title="ورود به پنل مدیریت"
+        submitLabel="ورود"
         closeHref={tenantSlug ? `/${tenantSlug}/` : "/"}
         onSuccess={() => setToken(getCashierToken(tenantSlug))}
       />

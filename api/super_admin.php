@@ -1430,10 +1430,118 @@ function lumiere_sa_parse_ts($value) {
     return $ts === false ? false : (int) $ts;
 }
 
+function lumiere_sa_payment_from_fulfilled_request($req) {
+    if (!is_array($req)) return null;
+    $created = "";
+    foreach (array("fulfilledAt", "paymentSubmittedAt", "updatedAt") as $key) {
+        if (!empty($req[$key])) {
+            $created = (string) $req[$key];
+            break;
+        }
+    }
+    if ($created === "") $created = lumiere_sa_iso();
+    return array(
+        "id" => lumiere_sa_new_id("pay"),
+        "tenantId" => (string) (isset($req["tenantId"]) ? $req["tenantId"] : ""),
+        "subscriptionId" => isset($req["subscriptionId"]) ? $req["subscriptionId"] : null,
+        "requestId" => isset($req["id"]) ? $req["id"] : null,
+        "amount" => intval(isset($req["price"]) ? $req["price"] : 0),
+        "currency" => (string) (isset($req["currency"]) ? $req["currency"] : "IRT"),
+        "status" => "successful",
+        "provider" => "manual",
+        "providerTransactionId" => null,
+        "referenceNumber" => (string) (isset($req["userPaymentReference"]) && $req["userPaymentReference"] !== ""
+            ? $req["userPaymentReference"]
+            : (isset($req["id"]) ? $req["id"] : "")),
+        "paymentMethod" => "bank_transfer",
+        "planId" => isset($req["planId"]) ? $req["planId"] : null,
+        "planName" => (string) (isset($req["planName"]) ? $req["planName"] : ""),
+        "billingCycle" => isset($req["billingCycle"]) ? $req["billingCycle"] : null,
+        "cafeName" => (string) (isset($req["cafeName"]) ? $req["cafeName"] : ""),
+        "ownerName" => (string) (isset($req["ownerName"]) ? $req["ownerName"] : ""),
+        "email" => (string) (isset($req["email"]) ? $req["email"] : ""),
+        "phone" => (string) (isset($req["phone"]) ? $req["phone"] : ""),
+        "createdAt" => $created,
+        "updatedAt" => lumiere_sa_iso(),
+    );
+}
+
+function lumiere_sa_ensure_payment_for_request($req) {
+    if (!is_array($req) || (isset($req["status"]) ? (string) $req["status"] : "") !== "fulfilled") {
+        return null;
+    }
+    $reqId = isset($req["id"]) ? (string) $req["id"] : "";
+    if ($reqId === "") return null;
+    $payments = lumiere_sa_load_collection("saas_payments", array());
+    if (!is_array($payments)) $payments = array();
+    foreach ($payments as $p) {
+        if (is_array($p) && isset($p["requestId"]) && (string) $p["requestId"] === $reqId) {
+            return null;
+        }
+    }
+    $payment = lumiere_sa_payment_from_fulfilled_request($req);
+    if (!$payment) return null;
+    $payments[] = $payment;
+    lumiere_sa_save_collection("saas_payments", $payments);
+    return $payment;
+}
+
+function lumiere_sa_sync_payments_from_fulfilled_requests() {
+    $reqs = lumiere_sa_load_collection("recharge_requests", array());
+    if (!is_array($reqs)) $reqs = array();
+    foreach ($reqs as $req) {
+        if (is_array($req) && isset($req["status"]) && (string) $req["status"] === "fulfilled") {
+            lumiere_sa_ensure_payment_for_request($req);
+        }
+    }
+    $payments = lumiere_sa_load_collection("saas_payments", array());
+    return is_array($payments) ? $payments : array();
+}
+
+function lumiere_sa_enrich_saas_payments($payments) {
+    if (!is_array($payments)) return array();
+    $cafes = lumiere_sa_load_collection("cafes", array());
+    if (!is_array($cafes)) $cafes = array();
+    $cafeById = array();
+    foreach ($cafes as $c) {
+        if (is_array($c) && isset($c["id"])) $cafeById[(string) $c["id"]] = $c;
+    }
+    $plans = lumiere_sa_load_collection("plans", array());
+    if (!is_array($plans)) $plans = array();
+    $planById = array();
+    foreach ($plans as $p) {
+        if (is_array($p) && isset($p["id"])) $planById[(string) $p["id"]] = $p;
+    }
+    $out = array();
+    foreach ($payments as $p) {
+        if (!is_array($p)) continue;
+        $row = $p;
+        $tenantId = isset($row["tenantId"]) ? (string) $row["tenantId"] : "";
+        $cafe = ($tenantId !== "" && isset($cafeById[$tenantId])) ? $cafeById[$tenantId] : null;
+        if (is_array($cafe)) {
+            if (empty($row["cafeName"])) $row["cafeName"] = isset($cafe["name"]) ? $cafe["name"] : "";
+            if (empty($row["ownerName"])) $row["ownerName"] = isset($cafe["ownerName"]) ? $cafe["ownerName"] : "";
+            if (empty($row["email"])) $row["email"] = isset($cafe["email"]) ? $cafe["email"] : "";
+            if (empty($row["phone"])) $row["phone"] = isset($cafe["phone"]) ? $cafe["phone"] : "";
+        }
+        $planId = isset($row["planId"]) ? (string) $row["planId"] : "";
+        if ($planId !== "" && isset($planById[$planId]) && empty($row["planName"])) {
+            $row["planName"] = isset($planById[$planId]["name"]) ? $planById[$planId]["name"] : "";
+        }
+        $out[] = $row;
+    }
+    usort($out, function ($a, $b) {
+        $av = isset($a["createdAt"]) ? (string) $a["createdAt"] : "";
+        $bv = isset($b["createdAt"]) ? (string) $b["createdAt"] : "";
+        return strcmp($bv, $av);
+    });
+    return $out;
+}
+
 function lumiere_sa_dashboard_kpis() {
     $cafes = lumiere_sa_load_collection("cafes", array());
     $subs = lumiere_sa_load_collection("subscriptions", array());
-    $payments = lumiere_sa_load_collection("saas_payments", array());
+    $payments = lumiere_sa_enrich_saas_payments(lumiere_sa_sync_payments_from_fulfilled_requests());
     if (!is_array($cafes)) $cafes = array();
     if (!is_array($subs)) $subs = array();
     if (!is_array($payments)) $payments = array();
@@ -2204,6 +2312,11 @@ function lumiere_super_admin_handle($method, $route, $id, $body, $headers) {
             $req["status"] = "payment_submitted";
             $req["userPaymentReference"] = trim((string) (isset($body["paymentReference"]) ? $body["paymentReference"] : (isset($body["reference"]) ? $body["reference"] : "")));
             $req["userPaymentNote"] = trim((string) (isset($body["note"]) ? $body["note"] : (isset($body["userPaymentNote"]) ? $body["userPaymentNote"] : "")));
+            $req["userPaymentDate"] = trim((string) (isset($body["paymentDate"]) ? $body["paymentDate"] : (isset($body["userPaymentDate"]) ? $body["userPaymentDate"] : "")));
+            $req["userPaymentTime"] = trim((string) (isset($body["paymentTime"]) ? $body["paymentTime"] : (isset($body["userPaymentTime"]) ? $body["userPaymentTime"] : "")));
+            if ($req["userPaymentDate"] === "" || $req["userPaymentTime"] === "") {
+                return array("status" => 400, "body" => array("error" => "missing_payment_datetime"));
+            }
             $req["paymentSubmittedAt"] = lumiere_sa_iso();
             $req["updatedAt"] = lumiere_sa_iso();
             $reqs[$idx] = $req;
@@ -2331,6 +2444,7 @@ function lumiere_super_admin_handle($method, $route, $id, $body, $headers) {
                     $req["accessTicketId"] = $accessTicket["id"];
                 }
             }
+            lumiere_sa_ensure_payment_for_request($req);
             lumiere_sa_audit(
                 $admin,
                 "fulfill_recharge_request",
@@ -2829,11 +2943,13 @@ function lumiere_super_admin_handle($method, $route, $id, $body, $headers) {
     if ($route === "sa-payments" && $method === "GET") {
         list($admin, $err) = lumiere_sa_require_admin($headers, $body, "payments.read");
         if ($err) return $err;
-        $payments = lumiere_sa_load_collection("saas_payments", array());
-        if (!is_array($payments)) $payments = array();
+        $payments = lumiere_sa_enrich_saas_payments(lumiere_sa_sync_payments_from_fulfilled_requests());
         return array(
             "status" => 200,
-            "body" => lumiere_sa_filter_page($payments, array("id", "tenantId", "referenceNumber", "provider", "status")),
+            "body" => lumiere_sa_filter_page(
+                $payments,
+                array("id", "tenantId", "referenceNumber", "provider", "status", "cafeName", "ownerName", "email", "planName", "planId")
+            ),
         );
     }
 
@@ -2900,12 +3016,10 @@ function lumiere_super_admin_handle($method, $route, $id, $body, $headers) {
     if ($route === "sa-payment" && $itemId !== "" && $method === "GET") {
         list($admin, $err) = lumiere_sa_require_admin($headers, $body, "payments.read");
         if ($err) return $err;
-        $payments = lumiere_sa_load_collection("saas_payments", array());
-        if (is_array($payments)) {
-            foreach ($payments as $p) {
-                if (is_array($p) && isset($p["id"]) && $p["id"] === $itemId) {
-                    return array("status" => 200, "body" => array("payment" => $p));
-                }
+        $payments = lumiere_sa_enrich_saas_payments(lumiere_sa_sync_payments_from_fulfilled_requests());
+        foreach ($payments as $p) {
+            if (is_array($p) && isset($p["id"]) && $p["id"] === $itemId) {
+                return array("status" => 200, "body" => array("payment" => $p));
             }
         }
         return array("status" => 404, "body" => array("error" => "not_found"));
