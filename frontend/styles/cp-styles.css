@@ -8189,11 +8189,20 @@
 }
 
 .settings-header {
+  position: sticky;
+  top: 0;
+  z-index: 25;
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
   gap: 1rem;
   flex-wrap: wrap;
+  margin: -0.25rem -0.15rem 0;
+  padding: 0.65rem 0.15rem 0.85rem;
+  background: color-mix(in srgb, var(--bg, #16120e) 88%, transparent);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border-bottom: 1px solid color-mix(in srgb, var(--text) 8%, transparent);
 }
 
 .settings-title {
@@ -8212,6 +8221,27 @@
   display: flex;
   gap: 0.5rem;
   flex-wrap: wrap;
+  align-items: center;
+}
+
+.settings-required {
+  margin-right: 0.35rem;
+  font-style: normal;
+  font-size: 0.72rem;
+  font-weight: 700;
+  color: color-mix(in srgb, var(--primary) 80%, #fff);
+}
+
+.settings-field-error {
+  display: block;
+  margin-top: 0.35rem;
+  font-size: 0.78rem;
+  color: #f0b4b4;
+}
+
+.settings-field input[aria-invalid="true"] {
+  border-color: rgba(216, 106, 106, 0.55);
+  box-shadow: 0 0 0 3px rgba(216, 106, 106, 0.12);
 }
 
 .settings-error {

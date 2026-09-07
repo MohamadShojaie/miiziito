@@ -311,6 +311,19 @@ export function SettingsTab({ active, orders, invoices }: Props) {
     setDirty(true);
   }
 
+  /** Allow clearing while typing; required fields are enforced on save. */
+  function patchName(
+    key: "restaurantNameFa" | "restaurantNameEn",
+    value: string
+  ) {
+    setSettings((prev) => ({
+      ...prev,
+      [key]: value.slice(0, 80),
+    }));
+    setDirty(true);
+    if (error) setError("");
+  }
+
   function patchOptional(partial: Partial<Pick<SiteSettings, "address" | "phone">>) {
     setSettings((prev) => ({ ...prev, ...partial }));
     setDirty(true);
@@ -334,11 +347,20 @@ export function SettingsTab({ active, orders, invoices }: Props) {
 
   async function save(e: React.FormEvent) {
     e.preventDefault();
+    const nameFa = settings.restaurantNameFa.trim();
+    const nameEn = settings.restaurantNameEn.trim();
+    if (!nameFa || !nameEn) {
+      setError("نام فارسی و نام انگلیسی نمی‌توانند خالی باشند");
+      showToast("نام فارسی و انگلیسی را پر کنید");
+      return;
+    }
     setSaving(true);
     setError("");
     try {
       const payload: SiteSettings = {
         ...settings,
+        restaurantNameFa: nameFa,
+        restaurantNameEn: nameEn,
         logo: logoDraft || (logoCleared ? "" : settings.logo),
         backgroundImage: bgDraft || (bgCleared ? "" : settings.backgroundImage),
         showLogoOnReceipt: !!settings.showLogoOnReceipt,
@@ -397,6 +419,10 @@ export function SettingsTab({ active, orders, invoices }: Props) {
     summary?.customers?.length ? summary.customers : localSummary.customers;
   const customerCount =
     summary?.customerCount ?? localSummary.customerCount ?? 0;
+  const namesReady =
+    settings.restaurantNameFa.trim().length > 0 &&
+    settings.restaurantNameEn.trim().length > 0;
+  const canSave = dirty && namesReady;
 
   if (loading) {
     return (
@@ -432,7 +458,14 @@ export function SettingsTab({ active, orders, invoices }: Props) {
             type="submit"
             form="settings-form"
             className={`cp-btn cp-btn--primary${saving ? " is-loading" : ""}`}
-            disabled={saving || !dirty}
+            disabled={saving || !canSave}
+            title={
+              !namesReady
+                ? "نام فارسی و انگلیسی الزامی است"
+                : !dirty
+                  ? "تغییری برای ذخیره نیست"
+                  : undefined
+            }
           >
             {saving ? "در حال ذخیره…" : "ذخیره تغییرات"}
           </button>
@@ -508,25 +541,35 @@ export function SettingsTab({ active, orders, invoices }: Props) {
             </div>
             <div className="settings-fields">
               <label className="settings-field">
-                <span>نام فارسی</span>
+                <span>
+                  نام فارسی <em className="settings-required">الزامی</em>
+                </span>
                 <input
                   type="text"
                   value={settings.restaurantNameFa}
-                  onChange={(e) =>
-                    patch({ restaurantNameFa: e.target.value })
-                  }
+                  onChange={(e) => patchName("restaurantNameFa", e.target.value)}
+                  aria-invalid={!settings.restaurantNameFa.trim()}
+                  placeholder="مثلاً کافه لومیر"
                 />
+                {!settings.restaurantNameFa.trim() ? (
+                  <small className="settings-field-error">نام فارسی الزامی است</small>
+                ) : null}
               </label>
               <label className="settings-field">
-                <span>نام انگلیسی</span>
+                <span>
+                  نام انگلیسی <em className="settings-required">الزامی</em>
+                </span>
                 <input
                   type="text"
                   dir="ltr"
                   value={settings.restaurantNameEn}
-                  onChange={(e) =>
-                    patch({ restaurantNameEn: e.target.value })
-                  }
+                  onChange={(e) => patchName("restaurantNameEn", e.target.value)}
+                  aria-invalid={!settings.restaurantNameEn.trim()}
+                  placeholder="e.g. Lumiere Cafe"
                 />
+                {!settings.restaurantNameEn.trim() ? (
+                  <small className="settings-field-error">نام انگلیسی الزامی است</small>
+                ) : null}
               </label>
               <label className="settings-field settings-field--wide">
                 <span>شعار / توضیح کوتاه</span>
