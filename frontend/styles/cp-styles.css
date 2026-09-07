@@ -4075,6 +4075,15 @@
   object-fit: cover;
 }
 
+.menu-admin-thumb.is-default {
+  padding: 0.35rem;
+  background: color-mix(in srgb, var(--primary) 10%, transparent);
+}
+
+.menu-admin-thumb.is-default img {
+  object-fit: contain;
+}
+
 .menu-admin-thumb.is-empty span {
   font-size: 1rem;
   font-weight: 800;

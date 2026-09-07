@@ -1,5 +1,5 @@
 {
-  "restaurantNameFa": "test2 cafe name",
+  "restaurantNameFa": "قاط",
   "restaurantNameEn": "test2 cafe name",
   "tagline": "",
   "address": "",
@@ -20,5 +20,5 @@
   "receiptFooterMessage": "به امید دیدار مجدد",
   "showBackgroundOnMenu": true,
   "menuStructure": "classic",
-  "updatedAt": 1788773943028
+  "updatedAt": 1788774290584
 }

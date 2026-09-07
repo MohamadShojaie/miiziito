@@ -755,10 +755,14 @@ export function MenuAdminTab() {
         ) : (
           <ul className="menu-admin-list">
             {visibleItems.map((item) => {
-              const img = assetUrl(item.image);
+              const id = item.id || item.name;
+              const customImg = assetUrl(item.image);
+              const thumbSrc =
+                customImg || assetUrl(resolveDefaultItemImage(id));
+              const isDefaultThumb = !customImg;
               const isNew = itemIsNew(item);
               return (
-                <li key={item.id || item.name}>
+                <li key={id}>
                   <button
                     type="button"
                     className={`menu-admin-row${item.soldOut ? " is-sold" : ""}${isNew ? " is-new" : ""}`}
@@ -767,15 +771,11 @@ export function MenuAdminTab() {
                     }
                   >
                     <span
-                      className={`menu-admin-thumb${img ? "" : " is-empty"}`}
+                      className={`menu-admin-thumb${isDefaultThumb ? " is-default" : ""}`}
                       aria-hidden="true"
                     >
-                      {img ? (
-                        // eslint-disable-next-line @next/next/no-img-element
-                        <img src={img} alt="" />
-                      ) : (
-                        <span>{item.name.slice(0, 1)}</span>
-                      )}
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img src={thumbSrc} alt="" />
                     </span>
                     <span className="menu-admin-row-main">
                       <strong className="menu-admin-row-name">
