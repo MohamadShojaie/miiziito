@@ -864,6 +864,130 @@ function lumiere_sa_find_cafe($tenantId) {
     return null;
 }
 
+function lumiere_sa_replace_access_body_value($body, $label, $newValue) {
+    if ($body === "" || $label === "" || $newValue === null) return $body;
+    $lines = preg_split("/\r\n|\n|\r/", (string) $body);
+    if (!is_array($lines)) return $body;
+    $out = array();
+    $i = 0;
+    $count = count($lines);
+    while ($i < $count) {
+        $line = $lines[$i];
+        $out[] = $line;
+        if (trim($line) === $label || strpos($line, $label) !== false) {
+            if ($i + 1 < $count) {
+                $out[] = (string) $newValue;
+                $i += 2;
+                continue;
+            }
+        }
+        $i += 1;
+    }
+    return implode("\n", $out);
+}
+
+function lumiere_sa_patch_access_credentials_message(&$message, $cashierPassword = null, $accountPassword = null) {
+    if (!is_array($message)) return false;
+    $changed = false;
+    $payload = isset($message["payload"]) && is_array($message["payload"]) ? $message["payload"] : null;
+    if (is_array($payload) && isset($payload["type"]) && $payload["type"] === "access_credentials") {
+        if ($cashierPassword !== null && (string) (isset($payload["cashierPassword"]) ? $payload["cashierPassword"] : "") !== (string) $cashierPassword) {
+            $payload["cashierPassword"] = (string) $cashierPassword;
+            $changed = true;
+        }
+        if ($accountPassword !== null && (string) (isset($payload["accountPassword"]) ? $payload["accountPassword"] : "") !== (string) $accountPassword) {
+            $payload["accountPassword"] = (string) $accountPassword;
+            if ($accountPassword !== "") {
+                $payload["accountPasswordNote"] = "";
+            }
+            $changed = true;
+        }
+        if ($changed) {
+            $message["payload"] = $payload;
+        }
+    }
+    $body = isset($message["body"]) ? (string) $message["body"] : "";
+    if ($cashierPassword !== null && strpos($body, "رمز ورود پنل مدیریت:") !== false) {
+        $nextBody = lumiere_sa_replace_access_body_value($body, "رمز ورود پنل مدیریت:", (string) $cashierPassword);
+        if ($nextBody !== $body) {
+            $message["body"] = $nextBody;
+            $changed = true;
+            $body = $nextBody;
+        }
+    }
+    if ($accountPassword !== null && strpos($body, "رمز حساب اشتراک:") !== false) {
+        $nextBody = lumiere_sa_replace_access_body_value($body, "رمز حساب اشتراک:", (string) $accountPassword);
+        if ($nextBody !== $body) {
+            $message["body"] = $nextBody;
+            $changed = true;
+        }
+    }
+    return $changed;
+}
+
+function lumiere_sa_sync_access_ticket_credentials($tenantId, $cashierPassword = null, $accountPassword = null) {
+    $tenantId = trim((string) $tenantId);
+    if ($tenantId === "" || ($cashierPassword === null && $accountPassword === null)) return;
+    $tickets = lumiere_sa_load_collection("support_tickets", array());
+    if (!is_array($tickets)) return;
+    $changedAny = false;
+    foreach ($tickets as $i => $ticket) {
+        if (!is_array($ticket) || !isset($ticket["tenantId"]) || (string) $ticket["tenantId"] !== $tenantId) {
+            continue;
+        }
+        $msgs = isset($ticket["messages"]) && is_array($ticket["messages"]) ? $ticket["messages"] : array();
+        $ticketChanged = false;
+        foreach ($msgs as $mi => $msg) {
+            if (!is_array($msg)) continue;
+            if (lumiere_sa_patch_access_credentials_message($msg, $cashierPassword, $accountPassword)) {
+                $msgs[$mi] = $msg;
+                $ticketChanged = true;
+            }
+        }
+        if ($ticketChanged) {
+            $ticket["messages"] = $msgs;
+            $ticket["updatedAt"] = lumiere_sa_iso();
+            $tickets[$i] = $ticket;
+            $changedAny = true;
+        }
+    }
+    if ($changedAny) {
+        lumiere_sa_save_collection("support_tickets", $tickets);
+    }
+}
+
+function lumiere_sa_apply_live_access_credentials($ticket) {
+    if (!is_array($ticket)) return $ticket;
+    $tenantId = isset($ticket["tenantId"]) ? (string) $ticket["tenantId"] : "";
+    if ($tenantId === "") return $ticket;
+    $cafe = lumiere_sa_find_cafe($tenantId);
+    $owner = lumiere_sa_find_owner_by_tenant($tenantId);
+    $cashierPassword = lumiere_sa_cafe_cashier_password_plain($cafe);
+    $accountPassword = is_array($owner) && !empty($owner["passwordPlain"]) ? (string) $owner["passwordPlain"] : "";
+    if ($cashierPassword === "" && $accountPassword === "") return $ticket;
+    $out = $ticket;
+    $msgs = isset($out["messages"]) && is_array($out["messages"]) ? $out["messages"] : array();
+    $nextMsgs = array();
+    foreach ($msgs as $msg) {
+        if (!is_array($msg)) {
+            $nextMsgs[] = $msg;
+            continue;
+        }
+        $cloned = $msg;
+        if (isset($cloned["payload"]) && is_array($cloned["payload"])) {
+            $cloned["payload"] = $cloned["payload"];
+        }
+        lumiere_sa_patch_access_credentials_message(
+            $cloned,
+            $cashierPassword !== "" ? $cashierPassword : null,
+            $accountPassword !== "" ? $accountPassword : null
+        );
+        $nextMsgs[] = $cloned;
+    }
+    $out["messages"] = $nextMsgs;
+    return $out;
+}
+
 function lumiere_sa_cafe_tickets_for_owner($owner) {
     $tickets = lumiere_sa_load_collection("support_tickets", array());
     if (!is_array($tickets)) $tickets = array();
@@ -1793,6 +1917,7 @@ function lumiere_super_admin_handle($method, $route, $id, $body, $headers) {
                 }
             }
             lumiere_sa_save_collection("cafes", $cafes);
+            lumiere_sa_sync_access_ticket_credentials($cafe["id"], $newPassword, null);
             return array(
                 "status" => 200,
                 "body" => array("ok" => true, "kind" => "cashier", "cashierPassword" => $newPassword),
@@ -1805,6 +1930,11 @@ function lumiere_super_admin_handle($method, $route, $id, $body, $headers) {
         }
         lumiere_sa_set_owner_password($owner, $newPassword);
         lumiere_sa_save_owner($owner);
+        lumiere_sa_sync_access_ticket_credentials(
+            isset($owner["tenantId"]) ? $owner["tenantId"] : "",
+            null,
+            $newPassword
+        );
         return array(
             "status" => 200,
             "body" => array("ok" => true, "kind" => "account"),
@@ -1878,7 +2008,10 @@ function lumiere_super_admin_handle($method, $route, $id, $body, $headers) {
             return array("status" => 403, "body" => array("error" => "forbidden"));
         }
         if ($method === "GET") {
-            return array("status" => 200, "body" => array("ticket" => $ticket));
+            return array(
+                "status" => 200,
+                "body" => array("ticket" => lumiere_sa_apply_live_access_credentials($ticket)),
+            );
         }
         if ($method === "POST") {
             $action = (string) (isset($body["action"]) ? $body["action"] : "reply");
@@ -1903,7 +2036,10 @@ function lumiere_super_admin_handle($method, $route, $id, $body, $headers) {
             $ticket["updatedAt"] = lumiere_sa_iso();
             $tickets[$idx] = $ticket;
             lumiere_sa_save_collection("support_tickets", $tickets);
-            return array("status" => 200, "body" => array("ticket" => $ticket));
+            return array(
+                "status" => 200,
+                "body" => array("ticket" => lumiere_sa_apply_live_access_credentials($ticket)),
+            );
         }
     }
 
@@ -2356,6 +2492,7 @@ function lumiere_super_admin_handle($method, $route, $id, $body, $headers) {
                 $cafe["updatedAt"] = lumiere_sa_iso();
                 $cafes[$idx] = $cafe;
                 lumiere_sa_save_collection("cafes", $cafes);
+                lumiere_sa_sync_access_ticket_credentials($cafe["id"], $newPassword, null);
                 lumiere_sa_audit($admin, "reset_cashier_password", "cafe", $cafe["id"], $ip);
                 return array(
                     "status" => 200,
@@ -2989,7 +3126,7 @@ function lumiere_super_admin_handle($method, $route, $id, $body, $headers) {
             lumiere_sa_save_collection("support_tickets", $tickets);
             $enriched = lumiere_sa_enrich_support_tickets(array($ticket));
             $out = (is_array($enriched) && isset($enriched[0])) ? $enriched[0] : array_merge($ticket, lumiere_sa_support_ticket_meta($ticket));
-            return array("status" => 200, "body" => array("ticket" => $out));
+            return array("status" => 200, "body" => array("ticket" => lumiere_sa_apply_live_access_credentials($out)));
         }
         if ($method === "POST") {
             if (!lumiere_sa_has_permission($admin, "support.write")) {

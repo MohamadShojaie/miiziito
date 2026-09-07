@@ -29,7 +29,7 @@ function lineAfter(label: string, lines: string[]): string {
 /** Parse structured payload, or recover fields from legacy plain-text access tickets. */
 export function resolveAccessPayload(
   message: SupportMessageLike,
-  subject?: string
+  _subject?: string
 ): AccessCredentialsPayload | null {
   const raw = message.payload;
   if (raw && typeof raw === "object" && (raw as AccessCredentialsPayload).type === "access_credentials") {
@@ -39,9 +39,14 @@ export function resolveAccessPayload(
     };
   }
 
-  const isAccessSubject = (subject || "").includes("اطلاعات دسترسی");
   const body = message.body || "";
-  if (!isAccessSubject && !body.includes("آدرس منو") && !body.includes("آدرس پنل مدیریت")) {
+  // Only treat THIS message as credentials when its own body looks like an access dump.
+  // Ticket subject alone must not turn normal replies into the credentials card.
+  const looksLikeAccessBody =
+    body.includes("آدرس منو") ||
+    body.includes("آدرس پنل مدیریت") ||
+    body.includes("رمز ورود پنل مدیریت");
+  if (!looksLikeAccessBody) {
     return null;
   }
 
@@ -59,6 +64,10 @@ export function resolveAccessPayload(
   if (accountPassword.includes("همان رمزی")) {
     accountPasswordNote = accountPassword;
     accountPassword = "";
+  }
+
+  if (!menuUrl && !adminUrl && !cashierPassword && !accountUrl) {
+    return null;
   }
 
   return {

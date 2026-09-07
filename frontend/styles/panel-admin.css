@@ -553,6 +553,44 @@ body.sa-panel-active {
   margin-bottom: 16px;
 }
 
+.sa-password-field {
+  position: relative;
+}
+
+.sa-password-field .sa-input {
+  padding-left: 46px;
+}
+
+.sa-password-toggle {
+  position: absolute;
+  left: 10px;
+  top: 50%;
+  transform: translateY(-50%);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  padding: 0;
+  border: none;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--sa-text-muted);
+  cursor: pointer;
+  transition: color 0.15s ease, background 0.15s ease;
+}
+
+.sa-password-toggle:hover {
+  color: var(--sa-accent);
+  background: var(--sa-accent-soft);
+}
+
+.sa-password-toggle:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 3px rgba(201, 162, 39, 0.28);
+  color: var(--sa-accent);
+}
+
 .sa-table-wrap {
   overflow-x: auto;
 }
@@ -655,20 +693,96 @@ body.sa-panel-active {
   align-items: flex-start;
 }
 
+.sa-ticket-thread {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin: 4px 0 8px;
+  padding: 12px;
+  border-radius: 16px;
+  background: rgba(0, 0, 0, 0.18);
+  border: 1px solid var(--sa-border);
+  max-height: min(62vh, 640px);
+  overflow-y: auto;
+}
+
 .sa-ticket-message {
-  padding: 14px 0;
-  border-bottom: 1px solid var(--sa-border);
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-width: min(92%, 560px);
+  padding: 12px 14px;
+  border-radius: 16px;
+  border: 1px solid var(--sa-border);
+  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.18);
+}
+
+.sa-ticket-message--cafe {
+  align-self: flex-start;
+  background: color-mix(in srgb, var(--sa-info) 14%, var(--sa-bg-elevated));
+  border-color: color-mix(in srgb, var(--sa-info) 35%, var(--sa-border));
+  border-bottom-right-radius: 6px;
+}
+
+.sa-ticket-message--admin {
+  align-self: flex-end;
+  background: color-mix(in srgb, var(--sa-accent) 14%, var(--sa-bg-elevated));
+  border-color: color-mix(in srgb, var(--sa-accent) 40%, var(--sa-border));
+  border-bottom-left-radius: 6px;
+}
+
+.sa-ticket-message--system {
+  align-self: center;
+  max-width: min(96%, 640px);
+  background: color-mix(in srgb, var(--sa-text-faint) 10%, var(--sa-bg-elevated));
+  border-color: var(--sa-border);
+  text-align: center;
+}
+
+/* Cafe portal: own messages on the outgoing side */
+.sa-ticket-thread--viewer-cafe .sa-ticket-message--cafe {
+  align-self: flex-end;
+  border-bottom-right-radius: 16px;
+  border-bottom-left-radius: 6px;
+}
+
+.sa-ticket-thread--viewer-cafe .sa-ticket-message--admin {
+  align-self: flex-start;
+  border-bottom-left-radius: 16px;
+  border-bottom-right-radius: 6px;
 }
 
 .sa-ticket-message-meta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
   font-size: 0.75rem;
   color: var(--sa-text-faint);
-  margin-bottom: 6px;
+}
+
+.sa-ticket-message-from {
+  font-weight: 700;
+  color: var(--sa-text-muted);
+}
+
+.sa-ticket-message--cafe .sa-ticket-message-from {
+  color: var(--sa-info);
+}
+
+.sa-ticket-message--admin .sa-ticket-message-from {
+  color: var(--sa-accent);
 }
 
 .sa-ticket-message-body {
   white-space: pre-wrap;
-  line-height: 1.6;
+  line-height: 1.7;
+  color: var(--sa-text);
+}
+
+.sa-ticket-message .sa-access-card {
+  margin-top: 4px;
+  background: rgba(0, 0, 0, 0.16);
 }
 
 .sa-access-card {

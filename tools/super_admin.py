@@ -822,6 +822,128 @@ def _find_cafe(tenant_id: str) -> dict | None:
     return None
 
 
+def _replace_access_body_value(body: str, label: str, new_value: str) -> str:
+    if not body or not label or new_value is None:
+        return body
+    lines = str(body).splitlines()
+    out = []
+    i = 0
+    while i < len(lines):
+        line = lines[i]
+        out.append(line)
+        if line.strip() == label or label in line:
+            if i + 1 < len(lines):
+                out.append(str(new_value))
+                i += 2
+                continue
+        i += 1
+    return "\n".join(out)
+
+
+def _patch_access_credentials_message(
+    message: dict,
+    *,
+    cashier_password: str | None = None,
+    account_password: str | None = None,
+) -> bool:
+    if not isinstance(message, dict):
+        return False
+    payload = message.get("payload")
+    changed = False
+    if isinstance(payload, dict) and payload.get("type") == "access_credentials":
+        payload = dict(payload)
+        if cashier_password is not None and str(payload.get("cashierPassword") or "") != str(cashier_password):
+            payload["cashierPassword"] = str(cashier_password)
+            changed = True
+        if account_password is not None and str(payload.get("accountPassword") or "") != str(account_password):
+            payload["accountPassword"] = str(account_password)
+            if account_password:
+                payload["accountPasswordNote"] = ""
+            changed = True
+        if changed:
+            message["payload"] = payload
+    body = str(message.get("body") or "")
+    if cashier_password is not None and "رمز ورود پنل مدیریت:" in body:
+        next_body = _replace_access_body_value(body, "رمز ورود پنل مدیریت:", str(cashier_password))
+        if next_body != body:
+            message["body"] = next_body
+            changed = True
+            body = next_body
+    if account_password is not None and "رمز حساب اشتراک:" in body:
+        next_body = _replace_access_body_value(body, "رمز حساب اشتراک:", str(account_password))
+        if next_body != body:
+            message["body"] = next_body
+            changed = True
+    return changed
+
+
+def _sync_access_ticket_credentials(
+    tenant_id: str,
+    *,
+    cashier_password: str | None = None,
+    account_password: str | None = None,
+) -> None:
+    tenant_id = str(tenant_id or "").strip()
+    if not tenant_id or (cashier_password is None and account_password is None):
+        return
+    tickets = load_collection("support_tickets", [])
+    if not isinstance(tickets, list):
+        return
+    changed_any = False
+    for i, ticket in enumerate(tickets):
+        if not isinstance(ticket, dict) or str(ticket.get("tenantId") or "") != tenant_id:
+            continue
+        msgs = ticket.get("messages") or []
+        if not isinstance(msgs, list):
+            continue
+        ticket_changed = False
+        for msg in msgs:
+            if _patch_access_credentials_message(
+                msg,
+                cashier_password=cashier_password,
+                account_password=account_password,
+            ):
+                ticket_changed = True
+        if ticket_changed:
+            ticket["updatedAt"] = _iso()
+            tickets[i] = ticket
+            changed_any = True
+    if changed_any:
+        save_collection("support_tickets", tickets)
+
+
+def _apply_live_access_credentials(ticket: dict) -> dict:
+    """Overlay current cafe passwords onto access_credentials messages for display."""
+    if not isinstance(ticket, dict):
+        return ticket
+    tenant_id = str(ticket.get("tenantId") or "")
+    if not tenant_id:
+        return ticket
+    cafe = _find_cafe(tenant_id)
+    owner = _find_owner_by_tenant(tenant_id)
+    cashier_password = str(((cafe or {}).get("settings") or {}).get("cashierPassword") or "")
+    account_password = str((owner or {}).get("passwordPlain") or "") if owner else ""
+    if not cashier_password and not account_password:
+        return ticket
+    out = dict(ticket)
+    msgs = []
+    for msg in out.get("messages") or []:
+        if not isinstance(msg, dict):
+            msgs.append(msg)
+            continue
+        cloned = dict(msg)
+        if isinstance(cloned.get("payload"), dict):
+            cloned["payload"] = dict(cloned["payload"])
+        _patch_access_credentials_message(
+            cloned,
+            cashier_password=cashier_password or None,
+            account_password=account_password or None,
+        )
+        msgs.append(cloned)
+    out["messages"] = msgs
+    return out
+
+
 def _cafe_tickets_for_owner(owner: dict) -> list:
     tickets = load_collection("support_tickets", [])
     if not isinstance(tickets, list):
@@ -1531,12 +1653,14 @@ def handle(
                     cafes[i] = c
                     break
             save_collection("cafes", cafes)
+            _sync_access_ticket_credentials(str(cafe.get("id") or ""), cashier_password=new_password)
             return {"status": 200, "body": {"ok": True, "kind": "cashier", "cashierPassword": new_password}}
 
         if not current_password or not _verify_password(current_password, str(owner.get("passwordHash") or "")):
             return {"status": 401, "body": {"error": "bad_credentials"}}
         _set_owner_password(owner, new_password)
         _save_owner(owner)
+        _sync_access_ticket_credentials(str(owner.get("tenantId") or ""), account_password=new_password)
         return {"status": 200, "body": {"ok": True, "kind": "account"}}
 
     if route == "sa-cafe-support" and method == "GET":
@@ -1600,7 +1724,7 @@ def handle(
         if not _cafe_ticket_owned(ticket, owner):
             return {"status": 403, "body": {"error": "forbidden"}}
         if method == "GET":
-            return {"status": 200, "body": {"ticket": ticket}}
+            return {"status": 200, "body": {"ticket": _apply_live_access_credentials(ticket)}}
         if method == "POST":
             action = str(body.get("action") or "reply")
             if action == "reply":
@@ -1623,7 +1747,7 @@ def handle(
             ticket["updatedAt"] = _iso()
             tickets[idx] = ticket
             save_collection("support_tickets", tickets)
-            return {"status": 200, "body": {"ticket": ticket}}
+            return {"status": 200, "body": {"ticket": _apply_live_access_credentials(ticket)}}
 
     if route == "sa-recharge-requests" and method == "GET":
         admin = session_admin(get_token(headers, body))
@@ -2021,6 +2145,7 @@ def handle(
                 cafe["updatedAt"] = _iso()
                 cafes[idx] = cafe
                 save_collection("cafes", cafes)
+                _sync_access_ticket_credentials(str(cafe.get("id") or ""), cashier_password=new_password)
                 _audit(admin, "reset_cashier_password", "cafe", cafe["id"], ip)
                 return {
                     "status": 200,
@@ -2557,7 +2682,8 @@ def handle(
             tickets[idx] = ticket
             save_collection("support_tickets", tickets)
             enriched = _enrich_support_tickets([ticket])
-            return {"status": 200, "body": {"ticket": enriched[0] if enriched else {**ticket, **_support_ticket_meta(ticket)}}}
+            out_ticket = enriched[0] if enriched else {**ticket, **_support_ticket_meta(ticket)}
+            return {"status": 200, "body": {"ticket": _apply_live_access_credentials(out_ticket)}}
         if method == "POST":
             if not has_permission(admin, "support.write"):
                 return {"status": 403, "body": {"error": "forbidden"}}

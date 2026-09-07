@@ -4,6 +4,12 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>راهنمای راه‌اندازی پنل میزیتو</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Vazirmatn:wght@400;500;700;800&display=swap"
+      rel="stylesheet"
+    />
     <style>
       :root {
         --bg: #14110e;
@@ -15,11 +21,15 @@
         --accent-soft: rgba(201, 162, 39, 0.14);
         --line: rgba(245, 239, 230, 0.12);
         --ok: #7dba74;
+        --font: "Vazirmatn", Tahoma, "Segoe UI", sans-serif;
       }
       * { box-sizing: border-box; }
+      html, body {
+        font-family: var(--font);
+      }
       body {
         margin: 0;
-        font-family: Tahoma, "Segoe UI", sans-serif;
+        font-family: var(--font);
         background:
           radial-gradient(900px 420px at 80% -10%, rgba(201, 162, 39, 0.16), transparent 60%),
           radial-gradient(700px 380px at 0% 20%, rgba(86, 99, 71, 0.18), transparent 55%),

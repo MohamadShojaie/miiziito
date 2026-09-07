@@ -881,7 +881,7 @@ export function SupportDetailPage({ id, onNavigate }: { id: string; onNavigate: 
     }
   }
 
-  const messagesNewestFirst = [...(ticket?.messages || [])].reverse();
+  const messagesOldestFirst = ticket?.messages || [];
   const userLabel = [ticket?.cafeOwnerName, ticket?.cafeName, ticket?.cafeOwnerEmail]
     .filter(Boolean)
     .join(" · ");
@@ -914,21 +914,25 @@ export function SupportDetailPage({ id, onNavigate }: { id: string; onNavigate: 
                   {ticket.lastActivityAt ? ` · آخرین پیام: ${formatDateTime(ticket.lastActivityAt)}` : ""}
                 </span>
               </div>
-              {messagesNewestFirst.map((m) => {
-                const accessPayload = resolveAccessPayload(m, ticket.subject);
-                return (
-                  <div key={m.id} className="sa-ticket-message">
-                    <div className="sa-ticket-message-meta">
-                      {MSG_FROM_FA[m.from] || m.from} · {formatDateTime(m.createdAt)}
+              <div className="sa-ticket-thread sa-ticket-thread--viewer-admin">
+                {messagesOldestFirst.map((m) => {
+                  const accessPayload = resolveAccessPayload(m, ticket.subject);
+                  const fromKey = m.from === "admin" || m.from === "cafe" || m.from === "system" ? m.from : "system";
+                  return (
+                    <div key={m.id} className={`sa-ticket-message sa-ticket-message--${fromKey}`}>
+                      <div className="sa-ticket-message-meta">
+                        <span className="sa-ticket-message-from">{MSG_FROM_FA[m.from] || m.from}</span>
+                        <span>{formatDateTime(m.createdAt)}</span>
+                      </div>
+                      {accessPayload ? (
+                        <AccessCredentialsCard payload={accessPayload} />
+                      ) : (
+                        <div className="sa-ticket-message-body">{m.body}</div>
+                      )}
                     </div>
-                    {accessPayload ? (
-                      <AccessCredentialsCard payload={accessPayload} />
-                    ) : (
-                      <div className="sa-ticket-message-body">{m.body}</div>
-                    )}
-                  </div>
-                );
-              })}
+                  );
+                })}
+              </div>
               <div className="sa-field" style={{ marginTop: 16 }}>
                 <textarea
                   className="sa-textarea"

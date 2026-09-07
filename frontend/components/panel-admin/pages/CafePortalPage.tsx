@@ -314,6 +314,16 @@ export function CafePortalPage({
           setAccess((a) => ({ ...a, cashierPassword: res.cashierPassword }));
         }
       }
+      if (selectedTicketId) {
+        try {
+          const ticketRes = await saFetch<{ ticket: SupportTicket }>("sa-cafe-support-item", {
+            id: selectedTicketId,
+          });
+          setSelectedTicket(ticketRes.ticket);
+        } catch {
+          /* ticket refresh is best-effort */
+        }
+      }
     } catch (err) {
       const msg = (err as Error).message;
       if (msg === "bad_credentials") toast("رمز فعلی اشتباه است", "error");
@@ -754,21 +764,25 @@ export function CafePortalPage({
                       <strong>{selectedTicket.subject}</strong>
                       <Badge status={selectedTicket.status} />
                     </div>
-                    {[...(selectedTicket.messages || [])].reverse().map((m) => {
-                      const accessPayload = resolveAccessPayload(m, selectedTicket.subject);
-                      return (
-                        <div key={m.id} className="sa-ticket-message">
-                          <div className="sa-ticket-message-meta">
-                            {MSG_FROM_FA[m.from] || m.from} · {formatDateTime(m.createdAt)}
+                    <div className="sa-ticket-thread sa-ticket-thread--viewer-cafe">
+                      {(selectedTicket.messages || []).map((m) => {
+                        const accessPayload = resolveAccessPayload(m, selectedTicket.subject);
+                        const fromKey = m.from === "admin" || m.from === "cafe" || m.from === "system" ? m.from : "system";
+                        return (
+                          <div key={m.id} className={`sa-ticket-message sa-ticket-message--${fromKey}`}>
+                            <div className="sa-ticket-message-meta">
+                              <span className="sa-ticket-message-from">{MSG_FROM_FA[m.from] || m.from}</span>
+                              <span>{formatDateTime(m.createdAt)}</span>
+                            </div>
+                            {accessPayload ? (
+                              <AccessCredentialsCard payload={accessPayload} />
+                            ) : (
+                              <div className="sa-ticket-message-body">{m.body}</div>
+                            )}
                           </div>
-                          {accessPayload ? (
-                            <AccessCredentialsCard payload={accessPayload} />
-                          ) : (
-                            <div className="sa-ticket-message-body">{m.body}</div>
-                          )}
-                        </div>
-                      );
-                    })}
+                        );
+                      })}
+                    </div>
                     {selectedTicket.status !== "closed" && selectedTicket.status !== "resolved" ? (
                       <>
                         <div className="sa-field" style={{ marginTop: 12 }}>
