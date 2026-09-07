@@ -3,6 +3,9 @@ export const PLATFORM_BRAND = {
   nameEn: "Miiziito",
   nameFa: "میزییتو",
   title: "Miiziito — میزییتو",
+  markSvg: "/assets/branding/miiziito-mark.svg",
+  markPng: "/assets/branding/miiziito-mark.png",
+  lockupPng: "/assets/branding/miiziito-lockup.png",
 } as const;
 
 /** Fallback when a cafe has not configured its own name yet. */

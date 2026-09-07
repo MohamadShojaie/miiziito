@@ -393,7 +393,44 @@ a.mzt-btn-primary {
   flex-shrink: 0;
 }
 
+.mzt-nav-brand .mzt-brand-mark {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.55rem;
+  color: var(--text-primary);
+  line-height: 1;
+}
+
+.mzt-nav-brand .mzt-brand-mark-icon {
+  width: 1.55rem;
+  height: 1.55rem;
+  border-radius: 7px;
+  flex-shrink: 0;
+  display: block;
+}
+
+.mzt-nav-brand .mzt-brand-mark-text span,
 .mzt-nav-brand span span {
+  color: var(--accent-hover);
+}
+
+.mzt-footer-brand .mzt-brand-mark {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.6rem;
+  font-family: "SamCafe", "Vazir", Tahoma, sans-serif !important;
+  font-size: 1.35rem;
+  color: var(--text-primary);
+}
+
+.mzt-footer-brand .mzt-brand-mark-icon {
+  width: 1.7rem;
+  height: 1.7rem;
+  border-radius: 8px;
+  display: block;
+}
+
+.mzt-footer-brand .mzt-brand-mark-text span {
   color: var(--accent-hover);
 }
 

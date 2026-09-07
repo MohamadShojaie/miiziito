@@ -138,12 +138,12 @@ body.sa-panel-active {
   letter-spacing: 0;
 }
 
-.sa-brand-mark span,
-.sa-store-brand span,
-.sa-login-card h1 span {
-  font-family: var(--sa-latin) !important;
-  font-weight: 600;
-  font-style: italic;
+.sa-brand-mark .mzt-brand-mark-text > span,
+.sa-store-brand .mzt-brand-mark-text > span,
+.sa-login-card h1 .mzt-brand-mark-text > span {
+  font-family: var(--sa-display) !important;
+  font-weight: 700;
+  color: var(--sa-accent);
 }
 
 @keyframes sa-fade-up {
@@ -209,7 +209,21 @@ body.sa-panel-active {
   line-height: 1.15;
 }
 
-.sa-brand-mark span {
+.sa-brand-mark .mzt-brand-mark {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.55rem;
+}
+
+.sa-brand-mark .mzt-brand-mark-icon {
+  width: 1.55rem;
+  height: 1.55rem;
+  border-radius: 8px;
+  display: block;
+  flex-shrink: 0;
+}
+
+.sa-brand-mark .mzt-brand-mark-text > span {
   color: var(--sa-accent);
 }
 
@@ -1051,7 +1065,21 @@ a.sa-access-value:hover {
   line-height: 1.2;
 }
 
-.sa-login-card h1 span {
+.sa-login-card h1 .mzt-brand-mark {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.6rem;
+}
+
+.sa-login-card h1 .mzt-brand-mark-icon {
+  width: 2rem;
+  height: 2rem;
+  border-radius: 10px;
+  display: block;
+}
+
+.sa-login-card h1 .mzt-brand-mark-text > span {
   color: var(--sa-accent);
 }
 
@@ -1461,9 +1489,25 @@ a.sa-access-value:hover {
 .sa-store-brand {
   font-size: 2.1rem;
   line-height: 1.15;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
 }
 
-.sa-store-brand span {
+.sa-store-brand .mzt-brand-mark {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.55rem;
+}
+
+.sa-store-brand .mzt-brand-mark-icon {
+  width: 1.7rem;
+  height: 1.7rem;
+  border-radius: 8px;
+  display: block;
+}
+
+.sa-store-brand .mzt-brand-mark-text > span {
   color: var(--sa-accent);
 }
 
@@ -1473,7 +1517,7 @@ a.sa-access-value:hover {
   font-size: 0.82rem;
   font-weight: 400;
   color: var(--sa-text-faint);
-  margin-top: 8px;
+  margin-top: 0;
 }
 
 .sa-store-nav-actions {
