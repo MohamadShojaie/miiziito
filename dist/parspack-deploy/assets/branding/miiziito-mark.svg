@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="Miiziito">
+  <!-- App tile -->
+  <rect width="64" height="64" rx="14" fill="#16120e"/>
+  <g fill="#c9a227">
+    <!-- Plate / digital node -->
+    <circle cx="32" cy="12.8" r="4.4"/>
+    <!-- Tabletop with soft center dip -->
+    <path d="M14.8 22.6c0-1.85 1.45-3.2 3.35-3.2h27.7c1.9 0 3.35 1.35 3.35 3.2 0 .75-.28 1.35-.78 1.9-1.1 1.2-3.15 2.15-6.75 2.15H22.33c-3.6 0-5.65-.95-6.75-2.15-.5-.55-.78-1.15-.78-1.9z"/>
+    <!-- Legs into the M -->
+    <rect x="17.9" y="26.2" width="5.5" height="6.2" rx="1.2"/>
+    <rect x="40.6" y="26.2" width="5.5" height="6.2" rx="1.2"/>
+    <!-- M monogram (table legs + peaks) -->
+    <path d="M12.8 52.8V30.6h7.1l8.45 15.7 8.45-15.7h7.1v22.2h-6.55V38.9L32 49.7 19.35 38.9v13.9z"/>
+  </g>
+</svg>

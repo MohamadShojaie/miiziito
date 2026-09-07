@@ -1,0 +1,27 @@
+{
+  "_standalone": true,
+  "_added": {
+    "cat-1000-custom-3d792b820a": {
+      "categoryIndex": 1000,
+      "name": "aza",
+      "description": "",
+      "price": 0.0,
+      "soldOut": false,
+      "toppings": [],
+      "isNew": true,
+      "createdAt": 1788774109145,
+      "newAt": 1788774109145
+    }
+  },
+  "_addedCategories": {
+    "1000": {
+      "name": "az",
+      "hidden": false,
+      "icon": "assets/category/coffee.png"
+    }
+  },
+  "_categories": {},
+  "_categoryOrder": [
+    1000
+  ]
+}

@@ -1,0 +1,318 @@
+<!DOCTYPE html>
+<html lang="fa" dir="rtl">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>راهنمای راه‌اندازی پنل میزیتو</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Vazirmatn:wght@400;500;700;800&display=swap"
+      rel="stylesheet"
+    />
+    <style>
+      :root {
+        --bg: #14110e;
+        --surface: #221c16;
+        --surface-2: #2a231c;
+        --text: #f7f1e8;
+        --muted: #b9aea0;
+        --accent: #c9a227;
+        --accent-soft: rgba(201, 162, 39, 0.14);
+        --line: rgba(245, 239, 230, 0.12);
+        --ok: #7dba74;
+        --font: "Vazirmatn", Tahoma, "Segoe UI", sans-serif;
+      }
+      * { box-sizing: border-box; }
+      html, body {
+        font-family: var(--font);
+      }
+      body {
+        margin: 0;
+        font-family: var(--font);
+        background:
+          radial-gradient(900px 420px at 80% -10%, rgba(201, 162, 39, 0.16), transparent 60%),
+          radial-gradient(700px 380px at 0% 20%, rgba(86, 99, 71, 0.18), transparent 55%),
+          var(--bg);
+        color: var(--text);
+        line-height: 1.85;
+      }
+      .wrap {
+        max-width: 860px;
+        margin: 0 auto;
+        padding: 36px 18px 80px;
+      }
+      .hero {
+        padding: 8px 4px 20px;
+      }
+      .badge {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        background: var(--accent-soft);
+        color: var(--accent);
+        padding: 6px 12px;
+        border-radius: 999px;
+        font-size: 0.84rem;
+        font-weight: 700;
+        margin-bottom: 14px;
+      }
+      h1 {
+        margin: 0 0 10px;
+        font-size: clamp(1.55rem, 3vw, 2rem);
+        color: var(--text);
+        line-height: 1.35;
+      }
+      .lead {
+        margin: 0;
+        color: var(--muted);
+        max-width: 42rem;
+      }
+      .path {
+        display: grid;
+        grid-template-columns: repeat(4, 1fr);
+        gap: 8px;
+        margin: 22px 0 8px;
+      }
+      .path span {
+        display: block;
+        text-align: center;
+        padding: 10px 8px;
+        border-radius: 12px;
+        background: var(--surface);
+        border: 1px solid var(--line);
+        color: var(--muted);
+        font-size: 0.82rem;
+        font-weight: 700;
+      }
+      .path span strong {
+        display: block;
+        color: var(--accent);
+        font-size: 0.95rem;
+        margin-bottom: 2px;
+      }
+      .card {
+        background: linear-gradient(180deg, var(--surface-2), var(--surface));
+        border: 1px solid var(--line);
+        border-radius: 18px;
+        padding: 22px 22px 18px;
+        margin-top: 16px;
+      }
+      .card.first {
+        border-color: color-mix(in srgb, var(--accent) 45%, var(--line));
+        box-shadow: 0 0 0 1px color-mix(in srgb, var(--accent) 18%, transparent);
+      }
+      .num {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        min-width: 28px;
+        height: 28px;
+        border-radius: 999px;
+        background: var(--accent);
+        color: #1a1612;
+        font-weight: 800;
+        font-size: 0.9rem;
+        margin-left: 8px;
+      }
+      h2 {
+        margin: 0 0 8px;
+        font-size: 1.12rem;
+        color: var(--text);
+        display: flex;
+        align-items: center;
+      }
+      .why {
+        margin: 0 0 14px;
+        color: var(--accent);
+        font-size: 0.9rem;
+        font-weight: 700;
+      }
+      p, li { color: var(--muted); }
+      ol, ul { padding-right: 22px; margin: 0; }
+      li { margin: 0 0 8px; }
+      .tip {
+        margin-top: 14px;
+        padding: 12px 14px;
+        border-radius: 12px;
+        background: rgba(125, 186, 116, 0.1);
+        border: 1px solid rgba(125, 186, 116, 0.25);
+        color: #cfe8cb;
+        font-size: 0.9rem;
+      }
+      .tip strong { color: var(--ok); }
+      .checklist {
+        list-style: none;
+        padding: 0;
+        margin: 0;
+      }
+      .checklist li {
+        position: relative;
+        padding: 10px 14px 10px 12px;
+        margin: 0 0 8px;
+        border-radius: 12px;
+        background: rgba(0, 0, 0, 0.18);
+        border: 1px solid var(--line);
+      }
+      .checklist li::before {
+        content: "☐";
+        color: var(--accent);
+        margin-left: 8px;
+        font-weight: 700;
+      }
+      .print {
+        margin-top: 28px;
+        display: flex;
+        gap: 10px;
+        flex-wrap: wrap;
+      }
+      button, .btn {
+        appearance: none;
+        border: 0;
+        border-radius: 12px;
+        padding: 11px 16px;
+        background: var(--accent);
+        color: #1a1612;
+        font-weight: 800;
+        cursor: pointer;
+        text-decoration: none;
+        display: inline-flex;
+        align-items: center;
+      }
+      .btn-ghost {
+        background: transparent;
+        color: var(--accent);
+        border: 1px solid color-mix(in srgb, var(--accent) 45%, transparent);
+      }
+      a { color: var(--accent); }
+      @media (max-width: 720px) {
+        .path { grid-template-columns: 1fr 1fr; }
+      }
+      @media print {
+        body { background: #fff; color: #111; }
+        p, li, .lead, .path span { color: #333; }
+        .card, .path span { background: #fff; border-color: #ddd; box-shadow: none; }
+        .print { display: none; }
+        h1, h2, .why, .path span strong, .badge { color: #111; }
+        .tip { background: #f3f7f2; border-color: #cfe0cb; color: #244; }
+        .checklist li { background: #fafafa; }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="wrap">
+      <div class="hero">
+        <div class="badge">میزیتو · راه‌اندازی اولیه کافه</div>
+        <h1>از تنظیمات شروع کنید، بعد منو و میزها</h1>
+        <p class="lead">
+          بعد از فعال شدن اشتراک، این ترتیب را دنبال کنید. اولین کار مهم این است که
+          وارد <strong>پنل مدیریت</strong> شوید و از بخش <strong>تنظیمات</strong>
+          هویت کافه را کامل کنید؛ تا وقتی تنظیمات درست نباشد، منو برای مشتری کامل به نظر نمی‌رسد.
+        </p>
+        <div class="path" aria-label="مسیر راه‌اندازی">
+          <span><strong>۱</strong>تنظیمات</span>
+          <span><strong>۲</strong>منو</span>
+          <span><strong>۳</strong>میز و QR</span>
+          <span><strong>۴</strong>سفارش‌ها</span>
+        </div>
+      </div>
+
+      <div class="card">
+        <h2><span class="num">۰</span> ورود به پنل مدیریت</h2>
+        <p class="why">بدون ورود به پنل، نمی‌توانید تنظیمات و منو را بسازید.</p>
+        <ol>
+          <li>از پیام دسترسی، لینک <strong>پنل مدیریت (صندوق)</strong> را باز کنید.</li>
+          <li><strong>رمز پنل مدیریت</strong> را وارد کنید.</li>
+          <li>بعد از ورود، منوی سمت راست پنل را می‌بینید: سفارش‌ها، میزها، منو، تنظیمات و …</li>
+        </ol>
+      </div>
+
+      <div class="card first">
+        <h2><span class="num">۱</span> اول بروید سراغ تنظیمات</h2>
+        <p class="why">این مهم‌ترین قدم اول است — هویت کافه اینجا ساخته می‌شود.</p>
+        <ol>
+          <li>از منوی سمت راست روی <strong>تنظیمات</strong> بزنید.</li>
+          <li>در بخش <strong>اطلاعات رستوران</strong>:
+            <ul>
+              <li>نام فارسی کافه</li>
+              <li>نام انگلیسی (اختیاری ولی بهتر است)</li>
+              <li>شعار کوتاه</li>
+              <li>تلفن و آدرس (اگر می‌خواهید در منو دیده شود)</li>
+            </ul>
+          </li>
+          <li>در بخش <strong>لوگو و پس‌زمینه</strong>:
+            <ul>
+              <li>لوگوی کافه را آپلود کنید</li>
+              <li>تصویر پس‌زمینه سربرگ منو را بگذارید</li>
+              <li>سوییچ «نمایش لوگو در منو» / پس‌زمینه را روشن کنید</li>
+            </ul>
+          </li>
+          <li>رنگ‌های اصلی را با سلیقه برندتان تنظیم کنید.</li>
+          <li>حتماً دکمه <strong>ذخیره</strong> را بزنید.</li>
+        </ol>
+        <div class="tip">
+          <strong>نکته:</strong> پیش‌نمایش کنار صفحه تنظیمات را ببینید تا قبل از ذخیره بفهمید منوی مشتری چه شکلی می‌شود.
+        </div>
+      </div>
+
+      <div class="card">
+        <h2><span class="num">۲</span> بعد منو را بسازید</h2>
+        <p class="why">حالا که برند کافه آماده است، آیتم‌ها را اضافه کنید.</p>
+        <ol>
+          <li>از منوی سمت راست وارد <strong>منو</strong> شوید.</li>
+          <li>اول <strong>دسته</strong> بسازید (مثلاً قهوه، نوشیدنی سرد، غذا، دسر).</li>
+          <li>داخل هر دسته، آیتم اضافه کنید: نام، قیمت، عکس، توضیحات.</li>
+          <li>اگر آیتمی تمام شده، آن را «ناموجود» کنید تا مشتری سفارش ندهد.</li>
+          <li>لینک <strong>منو</strong> را باز کنید و روی موبایل نتیجه را چک کنید.</li>
+        </ol>
+      </div>
+
+      <div class="card">
+        <h2><span class="num">۳</span> میزها و QR</h2>
+        <p class="why">مشتری با اسکن QR مستقیم به منوی همان میز می‌رسد.</p>
+        <ol>
+          <li>به بخش <strong>میزها</strong> بروید.</li>
+          <li>سالن بسازید (مثلاً همکف، حیاط).</li>
+          <li>برای هر سالن میز اضافه کنید.</li>
+          <li>برای هر میز QR بگیرید، چاپ کنید و روی میز بچسبانید.</li>
+        </ol>
+      </div>
+
+      <div class="card">
+        <h2><span class="num">۴</span> سفارش و کار روزمره</h2>
+        <ol>
+          <li>سفارش‌های جدید را در بخش <strong>سفارش‌ها</strong> ببینید و وضعیت را به‌روز کنید.</li>
+          <li>تسویه و فاکتور را از <strong>فاکتورها</strong> انجام دهید.</li>
+          <li>اگر کارتخوان دارید، از <strong>پایانه‌های پرداخت</strong> آن را اضافه کنید.</li>
+          <li>برای تخفیف مناسبتی از بخش <strong>کوپن‌ها</strong> استفاده کنید.</li>
+        </ol>
+      </div>
+
+      <div class="card">
+        <h2>چک‌لیست روز اول</h2>
+        <ul class="checklist">
+          <li>ورود به پنل مدیریت با رمز صندوق</li>
+          <li>تکمیل تنظیمات (نام، لوگو، پس‌زمینه، ذخیره)</li>
+          <li>ساخت حداقل ۲ دسته و چند آیتم منو</li>
+          <li>ساخت میز و چاپ QR</li>
+          <li>یک‌بار منوی آنلاین را روی موبایل تست کنید</li>
+          <li>رمز پنل را در جای امن نگه دارید / در صورت نیاز عوض کنید</li>
+        </ul>
+      </div>
+
+      <div class="card">
+        <h2>اگر گیر کردید</h2>
+        <ul>
+          <li>رمز پنل مدیریت و رمز حساب اشتراک جدا هستند.</li>
+          <li>تغییر رمزها از صفحه <strong>حساب اشتراک</strong> ممکن است.</li>
+          <li>برای مشکل فنی، از همان صفحه حساب یک <strong>تیکت پشتیبانی</strong> بفرستید.</li>
+        </ul>
+      </div>
+
+      <div class="print">
+        <button type="button" onclick="window.print()">چاپ / ذخیره PDF</button>
+        <a class="btn btn-ghost" href="/panel-admin/account/">بازگشت به حساب من</a>
+      </div>
+    </div>
+  </body>
+</html>

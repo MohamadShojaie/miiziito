@@ -1,0 +1,13 @@
+{
+  "restaurantNameFa": "test",
+  "restaurantNameEn": "test",
+  "tagline": "",
+  "primary": "#566347",
+  "secondary": "#D8DAD3",
+  "logo": "",
+  "backgroundImage": "",
+  "creditName": "",
+  "receiptFooterMessage": "",
+  "cashierPasswordHash": "pbkdf2$2b5b88844d861f7b54d3eb93fc7b7c65$b3e9cee5bcf0adfb71ce6993cff4d7c11b187e52abfb2ea9862cc1045c89f8d6",
+  "updatedAt": 1788687619053
+}
