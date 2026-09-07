@@ -388,19 +388,316 @@ function lumiere_sa_secret_vars() {
         $SUPER_ADMIN_EMAIL = null;
         $SUPER_ADMIN_PASSWORD = null;
         $SUPER_ADMIN_NAME = null;
+        $SMTP_HOST = null;
+        $SMTP_PORT = null;
+        $SMTP_USER = null;
+        $SMTP_PASS = null;
+        $SMTP_FROM_EMAIL = null;
+        $SMTP_FROM_NAME = null;
+        $SMTP_SECURE = null;
         include $secretFile;
-        if (isset($SUPER_ADMIN_EMAIL) && (string) $SUPER_ADMIN_EMAIL !== "") {
-            $out["SUPER_ADMIN_EMAIL"] = (string) $SUPER_ADMIN_EMAIL;
-        }
-        if (isset($SUPER_ADMIN_PASSWORD) && (string) $SUPER_ADMIN_PASSWORD !== "") {
-            $out["SUPER_ADMIN_PASSWORD"] = (string) $SUPER_ADMIN_PASSWORD;
-        }
-        if (isset($SUPER_ADMIN_NAME) && (string) $SUPER_ADMIN_NAME !== "") {
-            $out["SUPER_ADMIN_NAME"] = (string) $SUPER_ADMIN_NAME;
+        $keys = array(
+            "SUPER_ADMIN_EMAIL",
+            "SUPER_ADMIN_PASSWORD",
+            "SUPER_ADMIN_NAME",
+            "SMTP_HOST",
+            "SMTP_PORT",
+            "SMTP_USER",
+            "SMTP_PASS",
+            "SMTP_FROM_EMAIL",
+            "SMTP_FROM_NAME",
+            "SMTP_SECURE",
+        );
+        foreach ($keys as $key) {
+            if (isset($$key) && (string) $$key !== "") {
+                $out[$key] = (string) $$key;
+            }
         }
     }
     return $out;
 }
+
+function lumiere_sa_mail_config() {
+    $secrets = lumiere_sa_secret_vars();
+    $pick = function ($key, $default = "") use ($secrets) {
+        $env = getenv($key);
+        if ($env !== false && trim((string) $env) !== "") {
+            return trim((string) $env);
+        }
+        if (isset($secrets[$key]) && trim((string) $secrets[$key]) !== "") {
+            return trim((string) $secrets[$key]);
+        }
+        return $default;
+    };
+    $host = $pick("SMTP_HOST");
+    $port = intval($pick("SMTP_PORT", "587") ?: "587");
+    $user = $pick("SMTP_USER");
+    $password = $pick("SMTP_PASS");
+    $fromEmail = $pick("SMTP_FROM_EMAIL");
+    if ($fromEmail === "") $fromEmail = $user;
+    $fromName = $pick("SMTP_FROM_NAME", "میزیتو");
+    if ($fromName === "") $fromName = "میزیتو";
+    $secure = strtolower($pick("SMTP_SECURE", "tls"));
+    if (!in_array($secure, array("tls", "ssl", ""), true)) $secure = "tls";
+    $configured = ($host !== "" && $fromEmail !== "");
+    return array(
+        "configured" => $configured,
+        "host" => $host,
+        "port" => $port,
+        "user" => $user,
+        "hasPassword" => ($password !== ""),
+        "fromEmail" => $fromEmail,
+        "fromName" => $fromName,
+        "secure" => $secure,
+        "password" => $configured ? $password : "",
+        "mode" => $configured ? "smtp" : "log",
+    );
+}
+
+function lumiere_sa_wrap_platform_email_html($title, $bodyHtml) {
+    $safeTitle = htmlspecialchars((string) $title, ENT_QUOTES, "UTF-8");
+    $safeBody = (string) $bodyHtml;
+    return '<!DOCTYPE html>
+<html lang="fa" dir="rtl">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>' . $safeTitle . '</title>
+</head>
+<body style="margin:0;padding:0;background:#16120e;color:#f5efe6;font-family:Tahoma,Segoe UI,sans-serif;">
+  <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="background:#16120e;padding:28px 14px;">
+    <tr>
+      <td align="center">
+        <table role="presentation" width="100%" style="max-width:560px;background:#1f1a14;border:1px solid rgba(201,162,39,0.22);border-radius:18px;overflow:hidden;">
+          <tr>
+            <td style="padding:22px 24px 12px;border-bottom:1px solid rgba(201,162,39,0.14);">
+              <div style="font-size:1.35rem;font-weight:800;color:#c9a227;">میزیتو</div>
+              <div style="margin-top:6px;font-size:1rem;font-weight:700;color:#f5efe6;">' . $safeTitle . '</div>
+            </td>
+          </tr>
+          <tr>
+            <td style="padding:22px 24px;font-size:0.95rem;line-height:1.9;color:#d8cfc2;">
+              ' . $safeBody . '
+            </td>
+          </tr>
+          <tr>
+            <td style="padding:14px 24px 20px;font-size:0.78rem;color:#7a6f5c;border-top:1px solid rgba(201,162,39,0.12);">
+              این پیام از پلتفرم میزیتو ارسال شده است.
+            </td>
+          </tr>
+        </table>
+      </td>
+    </tr>
+  </table>
+</body>
+</html>';
+}
+
+function lumiere_sa_mail_status_path() {
+    return lumiere_sa_platform_dir() . "/mail_status.json";
+}
+
+function lumiere_sa_mail_log_dir() {
+    return lumiere_sa_platform_dir() . "/mail_log";
+}
+
+function lumiere_sa_load_mail_status() {
+    $path = lumiere_sa_mail_status_path();
+    if (!is_file($path)) return array();
+    $raw = @file_get_contents($path);
+    $data = json_decode((string) $raw, true);
+    return is_array($data) ? $data : array();
+}
+
+function lumiere_sa_save_mail_status($payload) {
+    $dir = lumiere_sa_platform_dir();
+    if (!is_dir($dir)) @mkdir($dir, 0775, true);
+    @file_put_contents(
+        lumiere_sa_mail_status_path(),
+        json_encode($payload, JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT)
+    );
+}
+
+function lumiere_sa_mail_public_status() {
+    $cfg = lumiere_sa_mail_config();
+    $last = lumiere_sa_load_mail_status();
+    return array(
+        "configured" => !empty($cfg["configured"]),
+        "mode" => $cfg["mode"],
+        "fromEmail" => !empty($cfg["configured"]) ? $cfg["fromEmail"] : "",
+        "fromName" => $cfg["fromName"],
+        "host" => !empty($cfg["configured"]) ? $cfg["host"] : "",
+        "port" => !empty($cfg["configured"]) ? $cfg["port"] : null,
+        "secure" => !empty($cfg["configured"]) ? $cfg["secure"] : "",
+        "hasPassword" => !empty($cfg["hasPassword"]),
+        "lastError" => !empty($last["lastError"]) ? (string) $last["lastError"] : null,
+        "lastSentAt" => isset($last["lastSentAt"]) ? $last["lastSentAt"] : null,
+        "lastMode" => isset($last["lastMode"]) ? $last["lastMode"] : null,
+    );
+}
+
+function lumiere_sa_mail_health() {
+    $cfg = lumiere_sa_mail_config();
+    $last = lumiere_sa_load_mail_status();
+    $lastError = isset($last["lastError"]) ? trim((string) $last["lastError"]) : "";
+    if (empty($cfg["configured"])) {
+        return array("status" => "warning", "detail" => "not configured (log mode)");
+    }
+    if ($lastError !== "" && isset($last["lastOk"]) && $last["lastOk"] === false) {
+        return array("status" => "critical", "detail" => "send failed");
+    }
+    return array("status" => "healthy", "detail" => "smtp configured");
+}
+
+function lumiere_sa_log_mail($to, $subject, $text, $html = null) {
+    $dir = lumiere_sa_mail_log_dir();
+    if (!is_dir($dir)) @mkdir($dir, 0775, true);
+    $stamp = gmdate("Ymd-His");
+    $path = $dir . "/" . $stamp . "-" . substr(bin2hex(random_bytes(4)), 0, 8) . ".eml.txt";
+    $parts = array(
+        "To: " . $to,
+        "Subject: " . $subject,
+        "Date: " . gmdate("Y-m-d\\TH:i:s\\Z"),
+        "",
+        (string) $text,
+        "",
+    );
+    if ($html) {
+        $parts[] = "--- HTML ---";
+        $parts[] = (string) $html;
+        $parts[] = "";
+    }
+    @file_put_contents($path, implode("\n", $parts));
+    return $path;
+}
+
+function lumiere_sa_smtp_expect($fp, $codes) {
+    $line = "";
+    while (($chunk = fgets($fp, 515)) !== false) {
+        $line .= $chunk;
+        if (isset($chunk[3]) && $chunk[3] === " ") break;
+    }
+    $code = intval(substr($line, 0, 3));
+    if (!in_array($code, (array) $codes, true)) {
+        throw new Exception("SMTP unexpected reply: " . trim($line));
+    }
+    return $line;
+}
+
+function lumiere_sa_smtp_cmd($fp, $cmd, $codes) {
+    fwrite($fp, $cmd . "\r\n");
+    return lumiere_sa_smtp_expect($fp, $codes);
+}
+
+function lumiere_sa_send_smtp($cfg, $to, $subject, $text, $html = null) {
+    $fromEmail = (string) $cfg["fromEmail"];
+    $fromName = (string) ($cfg["fromName"] ?: "میزیتو");
+    $host = (string) $cfg["host"];
+    $port = intval($cfg["port"] ?: 587);
+    $user = (string) ($cfg["user"] ?: "");
+    $password = (string) ($cfg["password"] ?: "");
+    $secure = (string) ($cfg["secure"] ?: "tls");
+
+    $boundary = "b_" . bin2hex(random_bytes(8));
+    $encodedSubject = "=?UTF-8?B?" . base64_encode($subject) . "?=";
+    $headers = array();
+    $headers[] = "From: =?UTF-8?B?" . base64_encode($fromName) . "?= <" . $fromEmail . ">";
+    $headers[] = "To: <" . $to . ">";
+    $headers[] = "Subject: " . $encodedSubject;
+    $headers[] = "Date: " . date("r");
+    $headers[] = "MIME-Version: 1.0";
+    $headers[] = "Content-Type: multipart/alternative; boundary=\"" . $boundary . "\"";
+
+    $body = "--" . $boundary . "\r\n";
+    $body .= "Content-Type: text/plain; charset=UTF-8\r\n";
+    $body .= "Content-Transfer-Encoding: base64\r\n\r\n";
+    $body .= chunk_split(base64_encode((string) $text)) . "\r\n";
+    if ($html) {
+        $body .= "--" . $boundary . "\r\n";
+        $body .= "Content-Type: text/html; charset=UTF-8\r\n";
+        $body .= "Content-Transfer-Encoding: base64\r\n\r\n";
+        $body .= chunk_split(base64_encode((string) $html)) . "\r\n";
+    }
+    $body .= "--" . $boundary . "--\r\n";
+
+    $remote = ($secure === "ssl" ? "ssl://" : "") . $host . ":" . $port;
+    $errno = 0;
+    $errstr = "";
+    $fp = @stream_socket_client($remote, $errno, $errstr, 30, STREAM_CLIENT_CONNECT);
+    if (!$fp) {
+        throw new Exception("SMTP connect failed: " . $errstr);
+    }
+    stream_set_timeout($fp, 30);
+    lumiere_sa_smtp_expect($fp, array(220));
+    lumiere_sa_smtp_cmd($fp, "EHLO miiziito.local", array(250));
+    if ($secure === "tls") {
+        lumiere_sa_smtp_cmd($fp, "STARTTLS", array(220));
+        if (!stream_socket_enable_crypto($fp, true, STREAM_CRYPTO_METHOD_TLS_CLIENT)) {
+            fclose($fp);
+            throw new Exception("SMTP STARTTLS failed");
+        }
+        lumiere_sa_smtp_cmd($fp, "EHLO miiziito.local", array(250));
+    }
+    if ($user !== "") {
+        lumiere_sa_smtp_cmd($fp, "AUTH LOGIN", array(334));
+        lumiere_sa_smtp_cmd($fp, base64_encode($user), array(334));
+        lumiere_sa_smtp_cmd($fp, base64_encode($password), array(235));
+    }
+    lumiere_sa_smtp_cmd($fp, "MAIL FROM:<" . $fromEmail . ">", array(250));
+    lumiere_sa_smtp_cmd($fp, "RCPT TO:<" . $to . ">", array(250, 251));
+    lumiere_sa_smtp_cmd($fp, "DATA", array(354));
+    $data = implode("\r\n", $headers) . "\r\n\r\n" . $body . "\r\n.";
+    lumiere_sa_smtp_cmd($fp, $data, array(250));
+    lumiere_sa_smtp_cmd($fp, "QUIT", array(221, 250));
+    fclose($fp);
+}
+
+function lumiere_sa_send_platform_mail($to, $subject, $text, $html = null) {
+    $to = trim((string) $to);
+    $subject = trim((string) $subject);
+    $text = (string) $text;
+    if ($to === "" || strpos($to, "@") === false) {
+        return array("ok" => false, "mode" => "none", "error" => "invalid_recipient");
+    }
+    if ($subject === "") {
+        return array("ok" => false, "mode" => "none", "error" => "missing_subject");
+    }
+    $cfg = lumiere_sa_mail_config();
+    $now = gmdate("Y-m-d\\TH:i:s\\Z");
+    if (empty($cfg["configured"])) {
+        $path = lumiere_sa_log_mail($to, $subject, $text, $html);
+        lumiere_sa_save_mail_status(array(
+            "lastOk" => true,
+            "lastMode" => "log",
+            "lastSentAt" => $now,
+            "lastError" => "",
+            "lastPath" => $path,
+        ));
+        return array("ok" => true, "mode" => "log", "path" => $path);
+    }
+    try {
+        lumiere_sa_send_smtp($cfg, $to, $subject, $text, $html);
+        lumiere_sa_save_mail_status(array(
+            "lastOk" => true,
+            "lastMode" => "smtp",
+            "lastSentAt" => $now,
+            "lastError" => "",
+        ));
+        return array("ok" => true, "mode" => "smtp");
+    } catch (Exception $e) {
+        $path = lumiere_sa_log_mail($to, $subject, $text, $html);
+        $err = substr($e->getMessage(), 0, 300);
+        lumiere_sa_save_mail_status(array(
+            "lastOk" => false,
+            "lastMode" => "smtp",
+            "lastSentAt" => $now,
+            "lastError" => $err,
+            "lastPath" => $path,
+        ));
+        return array("ok" => false, "mode" => "smtp", "error" => $err, "path" => $path);
+    }
+}
+
 
 function lumiere_sa_ensure_platform() {
     $dir = lumiere_sa_platform_dir();
@@ -3314,6 +3611,10 @@ function lumiere_super_admin_handle($method, $route, $id, $body, $headers) {
             $dbStatus = "critical";
             $dbDetail = "error";
         }
+        $email = lumiere_sa_mail_health();
+        $emailStatus = isset($email["status"]) ? (string) $email["status"] : "warning";
+        $emailDetail = isset($email["detail"]) ? (string) $email["detail"] : "not configured";
+        $overall = ($dbStatus === "critical" || $emailStatus === "critical") ? "critical" : "warning";
         return array(
             "status" => 200,
             "body" => array(
@@ -3322,13 +3623,50 @@ function lumiere_super_admin_handle($method, $route, $id, $body, $headers) {
                     array("name" => "Database", "status" => $dbStatus, "detail" => $dbDetail),
                     array("name" => "Payment Gateway", "status" => "warning", "detail" => "abstraction ready; no live provider"),
                     array("name" => "Background Jobs", "status" => "warning", "detail" => "not configured"),
-                    array("name" => "Email Service", "status" => "warning", "detail" => "not configured"),
+                    array("name" => "Email Service", "status" => $emailStatus, "detail" => $emailDetail),
                     array("name" => "SMS Service", "status" => "warning", "detail" => "not configured"),
                     array("name" => "Storage", "status" => "healthy", "detail" => lumiere_sa_platform_dir()),
                 ),
-                "overall" => ($dbStatus !== "critical") ? "warning" : "critical",
+                "overall" => $overall,
             ),
         );
+    }
+
+    if ($route === "sa-mail-status" && $method === "GET") {
+        list($admin, $err) = lumiere_sa_require_admin($headers, $body, "system.read");
+        if ($err) return $err;
+        return array("status" => 200, "body" => lumiere_sa_mail_public_status());
+    }
+
+    if ($route === "sa-mail-test" && $method === "POST") {
+        list($admin, $err) = lumiere_sa_require_admin($headers, $body, "system.read");
+        if ($err) return $err;
+        if (!lumiere_sa_has_permission($admin, "*") && !lumiere_sa_has_permission($admin, "plans.write")) {
+            return array("status" => 403, "body" => array("error" => "forbidden"));
+        }
+        $to = isset($body["to"]) ? trim((string) $body["to"]) : "";
+        if ($to === "" || strpos($to, "@") === false) {
+            return array("status" => 400, "body" => array("error" => "invalid_recipient"));
+        }
+        $subject = "ایمیل آزمایشی میزیتو";
+        $text = "این یک ایمیل آزمایشی از پلتفرم میزیتو است.\nاگر این پیام را دریافت کرده‌اید، سرویس ایمیل به‌درستی کار می‌کند.";
+        $html = lumiere_sa_wrap_platform_email_html(
+            $subject,
+            "<p>این یک ایمیل آزمایشی از پلتفرم میزیتو است.</p><p>اگر این پیام را دریافت کرده‌اید، سرویس ایمیل به‌درستی کار می‌کند.</p>"
+        );
+        $result = lumiere_sa_send_platform_mail($to, $subject, $text, $html);
+        lumiere_sa_audit($admin, "mail_test", "mail", $to, $ip);
+        if (empty($result["ok"])) {
+            return array(
+                "status" => 502,
+                "body" => array(
+                    "error" => "send_failed",
+                    "detail" => isset($result["error"]) ? $result["error"] : null,
+                    "mode" => isset($result["mode"]) ? $result["mode"] : null,
+                ),
+            );
+        }
+        return array("status" => 200, "body" => $result);
     }
 
     if ($route === "sa-system-settings" && $method === "GET") {

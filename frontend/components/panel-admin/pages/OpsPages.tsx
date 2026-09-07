@@ -1008,6 +1008,9 @@ export function SystemHealthPage() {
       error: "خطا",
       "abstraction ready; no live provider": "آماده؛ هنوز درگاهی وصل نیست",
       "not configured": "پیکربندی نشده",
+      "not configured (log mode)": "پیکربندی نشده (حالت لاگ)",
+      "smtp configured": "SMTP پیکربندی شده",
+      "send failed": "ارسال ناموفق",
     };
     return map[detail] || detail;
   };
@@ -1039,23 +1042,48 @@ export function SystemSettingsPage() {
   const [paymentInstructions, setPaymentInstructions] = useState("");
   const [reminderDays, setReminderDays] = useState("30, 7, 3, 1");
   const [loading, setLoading] = useState(true);
+  const [mailStatus, setMailStatus] = useState<{
+    configured?: boolean;
+    mode?: string;
+    fromEmail?: string;
+    fromName?: string;
+    host?: string;
+    lastError?: string | null;
+  } | null>(null);
+  const [testEmailTo, setTestEmailTo] = useState("");
+  const [sendingTest, setSendingTest] = useState(false);
+
+  function loadMailStatus() {
+    return saFetch<{
+      configured?: boolean;
+      mode?: string;
+      fromEmail?: string;
+      fromName?: string;
+      host?: string;
+      lastError?: string | null;
+    }>("sa-mail-status")
+      .then((r) => setMailStatus(r))
+      .catch(() => setMailStatus(null));
+  }
 
   useEffect(() => {
-    saFetch<{ settings: Record<string, unknown> }>("sa-system-settings")
-      .then((r) => {
-        const s = r.settings || {};
-        setTrialDays(Number(s.trialDays ?? 14));
-        setGracePeriodDays(Number(s.gracePeriodDays ?? 3));
-        setSupportPhone(String(s.supportPhone ?? ""));
-        setSupportNote(String(s.supportNote ?? ""));
-        setPaymentCardNumber(String(s.paymentCardNumber ?? ""));
-        setPaymentCardHolder(String(s.paymentCardHolder ?? ""));
-        setPaymentInstructions(String(s.paymentInstructions ?? ""));
-        const rem = s.reminderDays;
-        setReminderDays(Array.isArray(rem) ? rem.join(", ") : String(rem ?? "30, 7, 3, 1"));
-      })
-      .catch(() => {})
-      .finally(() => setLoading(false));
+    Promise.all([
+      saFetch<{ settings: Record<string, unknown> }>("sa-system-settings")
+        .then((r) => {
+          const s = r.settings || {};
+          setTrialDays(Number(s.trialDays ?? 14));
+          setGracePeriodDays(Number(s.gracePeriodDays ?? 3));
+          setSupportPhone(String(s.supportPhone ?? ""));
+          setSupportNote(String(s.supportNote ?? ""));
+          setPaymentCardNumber(String(s.paymentCardNumber ?? ""));
+          setPaymentCardHolder(String(s.paymentCardHolder ?? ""));
+          setPaymentInstructions(String(s.paymentInstructions ?? ""));
+          const rem = s.reminderDays;
+          setReminderDays(Array.isArray(rem) ? rem.join(", ") : String(rem ?? "30, 7, 3, 1"));
+        })
+        .catch(() => {}),
+      loadMailStatus(),
+    ]).finally(() => setLoading(false));
   }, []);
 
   async function save() {
@@ -1086,7 +1114,37 @@ export function SystemSettingsPage() {
     }
   }
 
+  async function sendTestEmail() {
+    const to = testEmailTo.trim();
+    if (!to || !to.includes("@")) {
+      toast("آدرس ایمیل معتبر وارد کنید", "error");
+      return;
+    }
+    setSendingTest(true);
+    try {
+      const result = await saFetch<{ ok?: boolean; mode?: string }>("sa-mail-test", {
+        method: "POST",
+        body: JSON.stringify({ to }),
+      });
+      if (result.mode === "log") {
+        toast("SMTP تنظیم نیست؛ ایمیل در mail_log ذخیره شد", "success");
+      } else {
+        toast("ایمیل آزمایشی ارسال شد", "success");
+      }
+      await loadMailStatus();
+    } catch {
+      toast("ارسال ایمیل آزمایشی ناموفق بود", "error");
+      await loadMailStatus();
+    } finally {
+      setSendingTest(false);
+    }
+  }
+
   if (loading) return <SkeletonTable rows={4} />;
+
+  const mailModeLabel = mailStatus?.configured
+    ? `SMTP فعال${mailStatus.host ? ` (${mailStatus.host})` : ""}`
+    : "حالت لاگ (بدون SMTP)";
 
   return (
     <>
@@ -1144,6 +1202,52 @@ export function SystemSettingsPage() {
           <div className="sa-field">
             <label className="sa-label">متن راهنما در فروشگاه</label>
             <textarea className="sa-textarea" rows={4} value={supportNote} onChange={(e) => setSupportNote(e.target.value)} />
+          </div>
+        </div>
+      </div>
+
+      <div className="sa-panel" style={{ marginTop: 16 }}>
+        <div className="sa-panel-body" style={{ maxWidth: 560 }}>
+          <h3 style={{ margin: "0 0 8px", fontSize: "1.05rem" }}>ایمیل / SMTP</h3>
+          <p style={{ margin: "0 0 14px", color: "var(--sa-muted, #8a7f6e)", fontSize: "0.9rem", lineHeight: 1.7 }}>
+            SMTP را در <code dir="ltr">data/secret.php</code> تنظیم کنید. اینجا فقط وضعیت و ارسال آزمایشی است.
+          </p>
+          <div className="sa-field">
+            <label className="sa-label">وضعیت</label>
+            <div style={{ fontSize: "0.95rem" }}>
+              {mailModeLabel}
+              {mailStatus?.fromEmail ? (
+                <span dir="ltr" style={{ marginInlineStart: 8, opacity: 0.85 }}>
+                  · from: {mailStatus.fromEmail}
+                </span>
+              ) : null}
+            </div>
+            {mailStatus?.lastError ? (
+              <div style={{ marginTop: 6, color: "#c45c4a", fontSize: "0.85rem" }} dir="ltr">
+                {mailStatus.lastError}
+              </div>
+            ) : null}
+          </div>
+          <div className="sa-field">
+            <label className="sa-label">ایمیل آزمایشی</label>
+            <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+              <input
+                className="sa-input"
+                dir="ltr"
+                style={{ flex: "1 1 220px" }}
+                value={testEmailTo}
+                onChange={(e) => setTestEmailTo(e.target.value)}
+                placeholder="you@example.com"
+              />
+              <button
+                type="button"
+                className="sa-btn sa-btn-secondary"
+                disabled={sendingTest}
+                onClick={sendTestEmail}
+              >
+                {sendingTest ? "در حال ارسال…" : "ارسال ایمیل آزمایشی"}
+              </button>
+            </div>
           </div>
         </div>
       </div>

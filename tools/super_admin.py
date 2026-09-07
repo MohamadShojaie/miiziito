@@ -29,6 +29,12 @@ from tenant_slug import (
     set_tenant_cashier_password,
     verify_tenant_cashier_password,
 )
+from mailer import (
+    mail_health,
+    mail_public_status,
+    send_platform_mail,
+    wrap_platform_email_html,
+)
 
 DATA = ROOT / "data"
 PLATFORM = DATA / "platform"
@@ -390,6 +396,13 @@ def _parse_secret_kv() -> dict[str, str]:
         "SUPER_ADMIN_EMAIL",
         "SUPER_ADMIN_PASSWORD",
         "SUPER_ADMIN_NAME",
+        "SMTP_HOST",
+        "SMTP_PORT",
+        "SMTP_USER",
+        "SMTP_PASS",
+        "SMTP_FROM_EMAIL",
+        "SMTP_FROM_NAME",
+        "SMTP_SECURE",
     ):
         m = re.search(rf"\${key}\s*=\s*\"([^\"]*)\"", text)
         if m:
@@ -2843,6 +2856,10 @@ def handle(
         except Exception:
             db_status = "critical"
             db_detail = "error"
+        email = mail_health()
+        email_status = str(email.get("status") or "warning")
+        email_detail = str(email.get("detail") or "not configured")
+        overall = "critical" if db_status == "critical" or email_status == "critical" else "warning"
         return {
             "status": 200,
             "body": {
@@ -2851,13 +2868,51 @@ def handle(
                     {"name": "Database", "status": db_status, "detail": db_detail},
                     {"name": "Payment Gateway", "status": "warning", "detail": "abstraction ready; no live provider"},
                     {"name": "Background Jobs", "status": "warning", "detail": "not configured"},
-                    {"name": "Email Service", "status": "warning", "detail": "not configured"},
+                    {"name": "Email Service", "status": email_status, "detail": email_detail},
                     {"name": "SMS Service", "status": "warning", "detail": "not configured"},
                     {"name": "Storage", "status": "healthy", "detail": str(PLATFORM)},
                 ],
-                "overall": "warning" if db_status != "critical" else "critical",
+                "overall": overall,
             },
         }
+
+    if route == "sa-mail-status" and method == "GET":
+        admin, err = require_admin(headers, body, "system.read")
+        if err:
+            return err
+        return {"status": 200, "body": mail_public_status()}
+
+    if route == "sa-mail-test" and method == "POST":
+        admin, err = require_admin(headers, body, "system.read")
+        if err:
+            return err
+        if not has_permission(admin, "*") and not has_permission(admin, "plans.write"):
+            return {"status": 403, "body": {"error": "forbidden"}}
+        to = str(body.get("to") or "").strip()
+        if not to or "@" not in to:
+            return {"status": 400, "body": {"error": "invalid_recipient"}}
+        subject = "ایمیل آزمایشی میزیتو"
+        text = (
+            "این یک ایمیل آزمایشی از پلتفرم میزیتو است.\n"
+            "اگر این پیام را دریافت کرده‌اید، سرویس ایمیل به‌درستی کار می‌کند."
+        )
+        html = wrap_platform_email_html(
+            subject,
+            "<p>این یک ایمیل آزمایشی از پلتفرم میزیتو است.</p>"
+            "<p>اگر این پیام را دریافت کرده‌اید، سرویس ایمیل به‌درستی کار می‌کند.</p>",
+        )
+        result = send_platform_mail(to, subject, text, html)
+        _audit(admin, "mail_test", "mail", to, ip)
+        if not result.get("ok"):
+            return {
+                "status": 502,
+                "body": {
+                    "error": "send_failed",
+                    "detail": result.get("error"),
+                    "mode": result.get("mode"),
+                },
+            }
+        return {"status": 200, "body": result}
 
     if route == "sa-system-settings" and method == "GET":
         admin, err = require_admin(headers, body, "system.read")
