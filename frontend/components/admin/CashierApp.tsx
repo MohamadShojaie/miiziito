@@ -31,12 +31,26 @@ import { ComposeModal } from "@/components/admin/ComposeModal";
 import {
   TAB_ICONS,
   IconClose,
+  IconLock,
   IconLogout,
   IconPlus,
   IconSidebar,
   IconSoundOff,
   IconSoundOn,
 } from "@/components/admin/CashierIcons";
+import { PlanAccessProvider } from "@/components/admin/PlanAccess";
+import {
+  UpgradePlanModal,
+  UpgradePlanPanel,
+} from "@/components/admin/UpgradePlanModal";
+import {
+  TAB_FEATURE,
+  UNLOCKED_ACCESS,
+  hasPlanFeature,
+  normalizePlanAccess,
+  type PlanAccess,
+  type PlanFeature,
+} from "@/lib/plan-access";
 
 type Tab =
   | "orders"
@@ -92,6 +106,30 @@ export function CashierApp({ tenantSlug = "" }: { tenantSlug?: string }) {
   const [focusOrderId, setFocusOrderId] = useState<string | null>(null);
   const [focusInvoiceId, setFocusInvoiceId] = useState<string | null>(null);
   const [focusCustomerId, setFocusCustomerId] = useState<string | null>(null);
+  const [planAccess, setPlanAccess] = useState<PlanAccess>(UNLOCKED_ACCESS);
+  const [upgradeFeature, setUpgradeFeature] = useState<PlanFeature | null>(null);
+
+  const requestUpgrade = useCallback((feature: PlanFeature) => {
+    setUpgradeFeature(feature);
+  }, []);
+
+  function applyAccess(raw: unknown) {
+    setPlanAccess(normalizePlanAccess(raw));
+  }
+
+  function selectTab(next: Tab) {
+    const feature = TAB_FEATURE[next];
+    if (feature && !hasPlanFeature(planAccess, feature)) {
+      requestUpgrade(feature);
+      return;
+    }
+    setTab(next);
+  }
+
+  const lockedTabFeature = TAB_FEATURE[tab];
+  const tabLocked = !!(
+    lockedTabFeature && !hasPlanFeature(planAccess, lockedTabFeature)
+  );
 
   useEffect(() => {
     if (tenantSlug) setMenuTenantSlug(tenantSlug);
@@ -105,8 +143,14 @@ export function CashierApp({ tenantSlug = "" }: { tenantSlug?: string }) {
       setAuthReady(true);
       return;
     }
-    apiJson<{ settings?: { restaurantNameEn?: string } }>("/api/settings")
-      .then(() => setToken(stored))
+    apiJson<{
+      settings?: { restaurantNameEn?: string };
+      access?: unknown;
+    }>("/api/settings")
+      .then((data) => {
+        if (data.access) applyAccess(data.access);
+        setToken(stored);
+      })
       .catch(() => {
         setCashierToken("", tenantSlug);
         setToken("");
@@ -118,8 +162,10 @@ export function CashierApp({ tenantSlug = "" }: { tenantSlug?: string }) {
     if (!token) return;
     apiJson<{
       settings?: { restaurantNameFa?: string; restaurantNameEn?: string };
+      access?: unknown;
     }>("/api/settings")
       .then((data) => {
+        if (data.access) applyAccess(data.access);
         const name =
           data.settings?.restaurantNameFa?.trim() ||
           data.settings?.restaurantNameEn?.trim();
@@ -163,6 +209,7 @@ export function CashierApp({ tenantSlug = "" }: { tenantSlug?: string }) {
   }
 
   return (
+    <PlanAccessProvider access={planAccess} onUpgrade={requestUpgrade}>
     <div
       className={`cashier-panel-overlay is-open${isDevMode(tenantSlug) ? " is-dev" : ""}`}
     >
@@ -263,8 +310,10 @@ export function CashierApp({ tenantSlug = "" }: { tenantSlug?: string }) {
             {TABS.map((t) => {
               const Icon = TAB_ICONS[t.id];
               const active = tab === t.id;
+              const feature = TAB_FEATURE[t.id];
+              const locked = !!(feature && !hasPlanFeature(planAccess, feature));
               const pendingCount =
-                t.id === "reservations"
+                t.id === "reservations" && !locked
                   ? live.reservations.filter((r) => r.status === "pending")
                       .length
                   : 0;
@@ -272,17 +321,22 @@ export function CashierApp({ tenantSlug = "" }: { tenantSlug?: string }) {
                 <button
                   key={t.id}
                   type="button"
-                  className={`cp-nav-item cashier-tab${active ? " is-active" : ""}`}
+                  className={`cp-nav-item cashier-tab${active ? " is-active" : ""}${locked ? " is-locked" : ""}`}
                   role="tab"
                   aria-selected={active}
-                  title={t.label}
-                  onClick={() => setTab(t.id)}
+                  aria-disabled={locked}
+                  title={locked ? `${t.label} — قفل` : t.label}
+                  onClick={() => selectTab(t.id)}
                 >
                   <span className="cp-nav-icon" aria-hidden="true">
                     <Icon size={18} />
                   </span>
                   <span className="cp-nav-label">{t.label}</span>
-                  {pendingCount > 0 ? (
+                  {locked ? (
+                    <span className="cp-nav-lock" aria-hidden="true">
+                      <IconLock size={14} />
+                    </span>
+                  ) : pendingCount > 0 ? (
                     <span className="cp-nav-badge" aria-label="درخواست جدید">
                       {pendingCount}
                     </span>
@@ -308,6 +362,10 @@ export function CashierApp({ tenantSlug = "" }: { tenantSlug?: string }) {
                   focusOrderId={focusOrderId}
                   onFocusOrderConsumed={() => setFocusOrderId(null)}
                   onOpenCustomer={(customerId) => {
+                    if (!hasPlanFeature(planAccess, "crm")) {
+                      requestUpgrade("crm");
+                      return;
+                    }
                     setFocusCustomerId(customerId);
                     setTab("customers");
                   }}
@@ -316,7 +374,7 @@ export function CashierApp({ tenantSlug = "" }: { tenantSlug?: string }) {
                     setEditOrder(order || null);
                     setComposeOpen(true);
                   }}
-                  onGoInvoices={() => setTab("invoices")}
+                  onGoInvoices={() => selectTab("invoices")}
                 />
               ) : null}
             </div>
@@ -326,13 +384,21 @@ export function CashierApp({ tenantSlug = "" }: { tenantSlug?: string }) {
               hidden={tab !== "invoices"}
             >
               {tab === "invoices" ? (
-                <InvoicesTab
-                  invoices={live.invoices}
-                  loading={live.loading}
-                  focusInvoiceId={focusInvoiceId}
-                  onFocusInvoiceConsumed={() => setFocusInvoiceId(null)}
-                  onPatched={applyPatch}
-                />
+                tabLocked && lockedTabFeature === "invoices" ? (
+                  <UpgradePlanPanel
+                    feature="invoices"
+                    planName={planAccess.planName}
+                    onUpgrade={() => requestUpgrade("invoices")}
+                  />
+                ) : (
+                  <InvoicesTab
+                    invoices={live.invoices}
+                    loading={live.loading}
+                    focusInvoiceId={focusInvoiceId}
+                    onFocusInvoiceConsumed={() => setFocusInvoiceId(null)}
+                    onPatched={applyPatch}
+                  />
+                )
               ) : null}
             </div>
             <div
@@ -341,11 +407,19 @@ export function CashierApp({ tenantSlug = "" }: { tenantSlug?: string }) {
               hidden={tab !== "reservations"}
             >
               {tab === "reservations" ? (
-                <ReservationsTab
-                  reservations={live.reservations}
-                  loading={live.loading}
-                  onPatched={applyPatch}
-                />
+                tabLocked && lockedTabFeature === "reservations" ? (
+                  <UpgradePlanPanel
+                    feature="reservations"
+                    planName={planAccess.planName}
+                    onUpgrade={() => requestUpgrade("reservations")}
+                  />
+                ) : (
+                  <ReservationsTab
+                    reservations={live.reservations}
+                    loading={live.loading}
+                    onPatched={applyPatch}
+                  />
+                )
               ) : null}
             </div>
             <div
@@ -369,7 +443,7 @@ export function CashierApp({ tenantSlug = "" }: { tenantSlug?: string }) {
                     setEditOrder(order || null);
                     setComposeOpen(true);
                   }}
-                  onGoInvoices={() => setTab("invoices")}
+                  onGoInvoices={() => selectTab("invoices")}
                 />
               ) : null}
             </div>
@@ -386,11 +460,19 @@ export function CashierApp({ tenantSlug = "" }: { tenantSlug?: string }) {
               hidden={tab !== "stats"}
             >
               {tab === "stats" ? (
-                <StatsTab
-                  active={tab === "stats"}
-                  invoices={live.invoices}
-                  onPatched={applyPatch}
-                />
+                tabLocked && lockedTabFeature === "advancedAnalytics" ? (
+                  <UpgradePlanPanel
+                    feature="advancedAnalytics"
+                    planName={planAccess.planName}
+                    onUpgrade={() => requestUpgrade("advancedAnalytics")}
+                  />
+                ) : (
+                  <StatsTab
+                    active={tab === "stats"}
+                    invoices={live.invoices}
+                    onPatched={applyPatch}
+                  />
+                )
               ) : null}
             </div>
             <div
@@ -399,32 +481,40 @@ export function CashierApp({ tenantSlug = "" }: { tenantSlug?: string }) {
               hidden={tab !== "customers"}
             >
               {tab === "customers" ? (
-                <CrmTab
-                  active={tab === "customers"}
-                  invoices={live.invoices}
-                  orders={live.orders}
-                  focusCustomerId={focusCustomerId}
-                  onFocusCustomerConsumed={() => setFocusCustomerId(null)}
-                  onOpenVisit={(visit) => {
-                    if (visit.kind === "order" && visit.orderId) {
-                      setFocusOrderId(visit.orderId);
-                      setTab("orders");
-                      return;
-                    }
-                    if (visit.kind === "invoice" && visit.invoiceId) {
-                      setFocusInvoiceId(visit.invoiceId);
-                      setTab("invoices");
-                      return;
-                    }
-                    if (visit.orderId) {
-                      setFocusOrderId(visit.orderId);
-                      setTab("orders");
-                    } else if (visit.invoiceId) {
-                      setFocusInvoiceId(visit.invoiceId);
-                      setTab("invoices");
-                    }
-                  }}
-                />
+                tabLocked && lockedTabFeature === "crm" ? (
+                  <UpgradePlanPanel
+                    feature="crm"
+                    planName={planAccess.planName}
+                    onUpgrade={() => requestUpgrade("crm")}
+                  />
+                ) : (
+                  <CrmTab
+                    active={tab === "customers"}
+                    invoices={live.invoices}
+                    orders={live.orders}
+                    focusCustomerId={focusCustomerId}
+                    onFocusCustomerConsumed={() => setFocusCustomerId(null)}
+                    onOpenVisit={(visit) => {
+                      if (visit.kind === "order" && visit.orderId) {
+                        setFocusOrderId(visit.orderId);
+                        setTab("orders");
+                        return;
+                      }
+                      if (visit.kind === "invoice" && visit.invoiceId) {
+                        setFocusInvoiceId(visit.invoiceId);
+                        selectTab("invoices");
+                        return;
+                      }
+                      if (visit.orderId) {
+                        setFocusOrderId(visit.orderId);
+                        setTab("orders");
+                      } else if (visit.invoiceId) {
+                        setFocusInvoiceId(visit.invoiceId);
+                        selectTab("invoices");
+                      }
+                    }}
+                  />
+                )
               ) : null}
             </div>
             <div
@@ -433,7 +523,15 @@ export function CashierApp({ tenantSlug = "" }: { tenantSlug?: string }) {
               hidden={tab !== "coupons"}
             >
               {tab === "coupons" ? (
-                <CouponsTab active={tab === "coupons"} />
+                tabLocked && lockedTabFeature === "coupons" ? (
+                  <UpgradePlanPanel
+                    feature="coupons"
+                    planName={planAccess.planName}
+                    onUpgrade={() => requestUpgrade("coupons")}
+                  />
+                ) : (
+                  <CouponsTab active={tab === "coupons"} />
+                )
               ) : null}
             </div>
             <div
@@ -442,7 +540,15 @@ export function CashierApp({ tenantSlug = "" }: { tenantSlug?: string }) {
               hidden={tab !== "hardware"}
             >
               {tab === "hardware" ? (
-                <HardwareTab active={tab === "hardware"} />
+                tabLocked && lockedTabFeature === "hardware" ? (
+                  <UpgradePlanPanel
+                    feature="hardware"
+                    planName={planAccess.planName}
+                    onUpgrade={() => requestUpgrade("hardware")}
+                  />
+                ) : (
+                  <HardwareTab active={tab === "hardware"} />
+                )
               ) : null}
             </div>
             <div
@@ -451,7 +557,15 @@ export function CashierApp({ tenantSlug = "" }: { tenantSlug?: string }) {
               hidden={tab !== "payments"}
             >
               {tab === "payments" ? (
-                <PaymentTerminalsTab active={tab === "payments"} />
+                tabLocked && lockedTabFeature === "paymentTerminal" ? (
+                  <UpgradePlanPanel
+                    feature="paymentTerminal"
+                    planName={planAccess.planName}
+                    onUpgrade={() => requestUpgrade("paymentTerminal")}
+                  />
+                ) : (
+                  <PaymentTerminalsTab active={tab === "payments"} />
+                )
               ) : null}
             </div>
             <div
@@ -483,6 +597,13 @@ export function CashierApp({ tenantSlug = "" }: { tenantSlug?: string }) {
         }}
         onDone={(data) => applyPatch(data as TablesPayload)}
       />
+      <UpgradePlanModal
+        open={!!upgradeFeature}
+        feature={upgradeFeature}
+        planName={planAccess.planName}
+        onClose={() => setUpgradeFeature(null)}
+      />
     </div>
+    </PlanAccessProvider>
   );
 }

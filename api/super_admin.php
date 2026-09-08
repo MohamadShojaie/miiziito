@@ -121,30 +121,24 @@ function lumiere_sa_default_plans() {
         array(
             "id" => "plan_basic",
             "name" => "پایه",
-            "description" => "منوی دیجیتال و امکانات ضروری",
+            "description" => "منوی دیجیتال، سفارش سر میز و مدیریت روزمره کافه",
             "status" => "active",
             "displayOrder" => 1,
-            "entitlements" => array(
-                "maxUsers" => 3,
-                "maxBranches" => 1,
-                "maxMenuItems" => 100,
-                "maxCategories" => 20,
-                "maxOrdersPerMonth" => 1000,
-                "maxCustomers" => 500,
-                "storageMb" => 500,
-                "digitalMenu" => true,
-                "qrMenu" => true,
-                "orderManagement" => true,
-                "cashier" => true,
-                "crm" => false,
-                "paymentTerminal" => false,
-                "advancedAnalytics" => false,
-                "multipleUsers" => true,
-                "multipleBranches" => false,
-                "customBranding" => false,
-                "customDomain" => false,
-                "prioritySupport" => false,
+            "marketingFeatures" => array(
+                "منوی دیجیتال QR بدون نصب اپ",
+                "چند چیدمان منو",
+                "برندینگ نام، لوگو، رنگ و پس‌زمینه",
+                "دسته‌بندی و آیتم با تصویر، قیمت و توضیح",
+                "برچسب جدید، تمام‌شد و تاپینگ",
+                "سبد خرید و سفارش سر میز",
+                "قفل میز با QR",
+                "صدازدن گارسون",
+                "هشدار صوتی و اتصال زنده سفارش",
+                "مدیریت منو و تعریف میز و سالن",
+                "ثبت دستی و پیگیری وضعیت سفارش",
+                "تنظیمات کافه و پیش‌نمایش منو",
             ),
+            "entitlements" => lumiere_default_plan_entitlements("basic"),
             "prices" => array(
                 "monthly" => 990000,
                 "6months" => 5400000,
@@ -154,30 +148,25 @@ function lumiere_sa_default_plans() {
         array(
             "id" => "plan_professional",
             "name" => "حرفه‌ای",
-            "description" => "صندوق، باشگاه مشتریان و ابزار رشد",
+            "description" => "فاکتور، رزرو میز، کوپن و آمار فروش",
             "status" => "active",
             "displayOrder" => 2,
-            "entitlements" => array(
-                "maxUsers" => 10,
-                "maxBranches" => 3,
-                "maxMenuItems" => 500,
-                "maxCategories" => 50,
-                "maxOrdersPerMonth" => 10000,
-                "maxCustomers" => 5000,
-                "storageMb" => 5000,
-                "digitalMenu" => true,
-                "qrMenu" => true,
-                "orderManagement" => true,
-                "cashier" => true,
-                "crm" => true,
-                "paymentTerminal" => true,
-                "advancedAnalytics" => true,
-                "multipleUsers" => true,
-                "multipleBranches" => true,
-                "customBranding" => true,
-                "customDomain" => false,
-                "prioritySupport" => false,
+            "marketingFeatures" => array(
+                "منوی دیجیتال QR و چند چیدمان",
+                "برندینگ کامل منو",
+                "دسته‌بندی، آیتم، تاپینگ و موجودی",
+                "سفارش سر میز، قفل QR و گارسون",
+                "پنل سفارش زنده با هشدار صوتی",
+                "وضعیت میز و مدیریت سفارش از نقشه میزها",
+                "مدیریت سالن و QR اختصاصی",
+                "رزرو میز از منوی مشتری",
+                "فاکتور نقد، کارت، تقسیم، نسیه و مالیات",
+                "تخفیف دستی، کوپن و خروجی Excel/PDF",
+                "چاپ رسید عادی و حرارتی",
+                "کارتخوان و پایانه پرداخت",
+                "آمار فروش و گزارش بدهکارها",
             ),
+            "entitlements" => lumiere_default_plan_entitlements("professional"),
             "prices" => array(
                 "monthly" => 2490000,
                 "6months" => 13500000,
@@ -187,30 +176,24 @@ function lumiere_sa_default_plans() {
         array(
             "id" => "plan_business",
             "name" => "کسب‌وکار",
-            "description" => "چندشعبه‌ای و پشتیبانی اولویت‌دار",
+            "description" => "باشگاه مشتریان، چاپ آشپزخانه و خدمات اختصاصی",
             "status" => "active",
             "displayOrder" => 3,
-            "entitlements" => array(
-                "maxUsers" => 50,
-                "maxBranches" => 20,
-                "maxMenuItems" => 5000,
-                "maxCategories" => 200,
-                "maxOrdersPerMonth" => 100000,
-                "maxCustomers" => 50000,
-                "storageMb" => 50000,
-                "digitalMenu" => true,
-                "qrMenu" => true,
-                "orderManagement" => true,
-                "cashier" => true,
-                "crm" => true,
-                "paymentTerminal" => true,
-                "advancedAnalytics" => true,
-                "multipleUsers" => true,
-                "multipleBranches" => true,
-                "customBranding" => true,
-                "customDomain" => true,
-                "prioritySupport" => true,
+            "marketingFeatures" => array(
+                "منوی دیجیتال QR با برندینگ کامل",
+                "سفارش سر میز، گارسون و اتصال زنده",
+                "مدیریت میز، سالن و رزرو",
+                "فاکتور کامل با کوپن، مالیات و خروجی فایل",
+                "کارتخوان و آمار فروش",
+                "چاپ تیکت آشپزخانه و بار",
+                "باشگاه مشتریان",
+                "پیامک و پیام گروهی برای مشتریان",
+                "مدیریت سخت‌افزار و پرینتر",
+                "دامنه اختصاصی",
+                "قالب و برندینگ اختصاصی",
+                "پشتیبانی ویژه",
             ),
+            "entitlements" => lumiere_default_plan_entitlements("business"),
             "prices" => array(
                 "monthly" => 4990000,
                 "6months" => 27000000,
@@ -218,6 +201,23 @@ function lumiere_sa_default_plans() {
             ),
         ),
     );
+}
+
+function lumiere_sa_normalize_marketing_features($raw) {
+    if (!is_array($raw)) return array();
+    $out = array();
+    foreach ($raw as $line) {
+        $s = trim((string) $line);
+        if ($s === "") continue;
+        if (function_exists("mb_substr")) {
+            $s = mb_substr($s, 0, 120);
+        } else {
+            $s = substr($s, 0, 120);
+        }
+        $out[] = $s;
+        if (count($out) >= 30) break;
+    }
+    return array_values($out);
 }
 
 function lumiere_sa_now() {
@@ -790,6 +790,10 @@ function lumiere_sa_ensure_platform() {
             "Professional" => array("حرفه‌ای", "صندوق، باشگاه مشتریان و ابزار رشد"),
             "Business" => array("کسب‌وکار", "چندشعبه‌ای و پشتیبانی اولویت‌دار"),
         );
+        $defaultsById = array();
+        foreach (lumiere_sa_default_plans() as $dp) {
+            if (isset($dp["id"])) $defaultsById[$dp["id"]] = $dp;
+        }
         $changed = false;
         foreach ($plans as $i => $p) {
             if (!is_array($p)) continue;
@@ -799,6 +803,18 @@ function lumiere_sa_ensure_platform() {
                 $plans[$i]["description"] = $rename[$key][1];
                 $plans[$i]["updatedAt"] = lumiere_sa_iso();
                 $changed = true;
+            }
+            $hasMarketing = isset($p["marketingFeatures"]) && is_array($p["marketingFeatures"]) && count($p["marketingFeatures"]) > 0;
+            if (!$hasMarketing) {
+                $pid = (string) (isset($p["id"]) ? $p["id"] : "");
+                if ($pid !== "" && isset($defaultsById[$pid]["marketingFeatures"])) {
+                    $plans[$i]["marketingFeatures"] = $defaultsById[$pid]["marketingFeatures"];
+                    $plans[$i]["updatedAt"] = lumiere_sa_iso();
+                    $changed = true;
+                } elseif (!$hasMarketing && !isset($p["marketingFeatures"])) {
+                    $plans[$i]["marketingFeatures"] = array();
+                    $changed = true;
+                }
             }
         }
         if ($changed) {
@@ -1466,6 +1482,30 @@ function lumiere_sa_sync_cafe_subscription_status($sub, $cafeStatus) {
         lumiere_sa_save_collection("cafes", $cafes);
         break;
     }
+}
+
+function lumiere_sa_clip_plain($s, $max) {
+    $s = trim((string) $s);
+    if (function_exists("mb_substr")) {
+        return mb_substr($s, 0, $max);
+    }
+    return substr($s, 0, $max);
+}
+
+function lumiere_sa_landing_contact_limited($ip) {
+    $tickets = lumiere_sa_load_collection("support_tickets", array());
+    if (!is_array($tickets)) return false;
+    $cutoff = time() - 15 * 60;
+    $n = 0;
+    $ip = (string) $ip;
+    foreach ($tickets as $t) {
+        if (!is_array($t)) continue;
+        if ((isset($t["source"]) ? (string) $t["source"] : "") !== "landing") continue;
+        if ((isset($t["ip"]) ? (string) $t["ip"] : "") !== $ip) continue;
+        $created = isset($t["createdAt"]) ? strtotime((string) $t["createdAt"]) : 0;
+        if ($created >= $cutoff) $n++;
+    }
+    return $n >= 5;
 }
 
 function lumiere_sa_rate_limited($email, $ip) {
@@ -2250,6 +2290,80 @@ function lumiere_super_admin_handle($method, $route, $id, $body, $headers) {
         );
     }
 
+    if ($route === "sa-public-contact" && $method === "POST") {
+        $honeypot = trim((string) (isset($body["website"]) ? $body["website"] : ""));
+        if ($honeypot !== "") {
+            return array("status" => 200, "body" => array("ok" => true));
+        }
+        if (lumiere_sa_landing_contact_limited($ip)) {
+            return array("status" => 429, "body" => array("error" => "too_many"));
+        }
+        $name = lumiere_sa_clip_plain(isset($body["name"]) ? $body["name"] : "", 80);
+        $phone = lumiere_sa_clip_plain(isset($body["phone"]) ? $body["phone"] : "", 32);
+        $email = strtolower(lumiere_sa_clip_plain(isset($body["email"]) ? $body["email"] : "", 120));
+        $cafeName = lumiere_sa_clip_plain(isset($body["cafeName"]) ? $body["cafeName"] : "", 80);
+        $message = lumiere_sa_clip_plain(isset($body["message"]) ? $body["message"] : "", 2000);
+        if (function_exists("mb_strlen")) {
+            $nameLen = mb_strlen($name);
+            $msgLen = mb_strlen($message);
+        } else {
+            $nameLen = strlen($name);
+            $msgLen = strlen($message);
+        }
+        if ($nameLen < 2) {
+            return array("status" => 400, "body" => array("error" => "missing_name"));
+        }
+        if ($msgLen < 10) {
+            return array("status" => 400, "body" => array("error" => "missing_message"));
+        }
+        $phoneDigits = preg_replace("/\D+/", "", $phone);
+        $emailOk = $email !== "" && filter_var($email, FILTER_VALIDATE_EMAIL);
+        if (strlen((string) $phoneDigits) < 8 && !$emailOk) {
+            return array("status" => 400, "body" => array("error" => "missing_contact"));
+        }
+        if ($email !== "" && !$emailOk) {
+            return array("status" => 400, "body" => array("error" => "invalid_email"));
+        }
+        $lines = array("نام: " . $name);
+        if ($phone !== "") $lines[] = "تلفن: " . $phone;
+        if ($email !== "") $lines[] = "ایمیل: " . $email;
+        if ($cafeName !== "") $lines[] = "کافه: " . $cafeName;
+        $lines[] = "";
+        $lines[] = $message;
+        $subject = $cafeName !== "" ? ("تماس از وب‌سایت — " . $cafeName) : ("تماس از وب‌سایت — " . $name);
+        $tickets = lumiere_sa_load_collection("support_tickets", array());
+        if (!is_array($tickets)) $tickets = array();
+        $now = lumiere_sa_iso();
+        $ticket = array(
+            "id" => lumiere_sa_new_id("tkt"),
+            "tenantId" => null,
+            "cafeName" => $cafeName,
+            "cafeOwnerName" => $name,
+            "cafeOwnerEmail" => $emailOk ? $email : "",
+            "cafeOwnerPhone" => $phone,
+            "source" => "landing",
+            "ip" => $ip,
+            "subject" => $subject,
+            "priority" => "normal",
+            "status" => "open",
+            "assignedAdminId" => null,
+            "messages" => array(
+                array(
+                    "id" => lumiere_sa_new_id("msg"),
+                    "from" => "cafe",
+                    "body" => implode("\n", $lines),
+                    "createdAt" => $now,
+                ),
+            ),
+            "createdAt" => $now,
+            "updatedAt" => $now,
+            "lastReplyAt" => $now,
+        );
+        array_unshift($tickets, $ticket);
+        lumiere_sa_save_collection("support_tickets", $tickets);
+        return array("status" => 200, "body" => array("ok" => true));
+    }
+
     if ($route === "sa-logout" && $method === "POST") {
         $token = lumiere_sa_get_token($headers, $body);
         $admin = lumiere_sa_session_admin($token);
@@ -2500,8 +2614,9 @@ function lumiere_super_admin_handle($method, $route, $id, $body, $headers) {
         if (!$plan) {
             return array("status" => 400, "body" => array("error" => "invalid_plan"));
         }
-        $cycle = (string) (isset($body["billingCycle"]) ? $body["billingCycle"] : "monthly");
-        if (!in_array($cycle, array("monthly", "6months", "yearly"), true)) $cycle = "monthly";
+        $cycle = (string) (isset($body["billingCycle"]) ? $body["billingCycle"] : "6months");
+        if ($cycle === "monthly") $cycle = "6months";
+        if (!in_array($cycle, array("6months", "yearly"), true)) $cycle = "6months";
         $reqType = (string) (isset($body["type"]) ? $body["type"] : "purchase");
         $note = trim((string) (isset($body["note"]) ? $body["note"] : ""));
         $prices = (isset($plan["prices"]) && is_array($plan["prices"])) ? $plan["prices"] : array();
@@ -3047,7 +3162,13 @@ function lumiere_super_admin_handle($method, $route, $id, $body, $headers) {
             "description" => (string) (isset($body["description"]) ? $body["description"] : ""),
             "status" => (string) (isset($body["status"]) ? $body["status"] : "active"),
             "displayOrder" => intval(isset($body["displayOrder"]) ? $body["displayOrder"] : count($plans) + 1),
-            "entitlements" => (isset($body["entitlements"]) && is_array($body["entitlements"])) ? $body["entitlements"] : array(),
+            "entitlements" => lumiere_normalize_entitlements(
+                (isset($body["entitlements"]) && is_array($body["entitlements"])) ? $body["entitlements"] : array(),
+                false
+            ),
+            "marketingFeatures" => lumiere_sa_normalize_marketing_features(
+                isset($body["marketingFeatures"]) ? $body["marketingFeatures"] : array()
+            ),
             "prices" => (isset($body["prices"]) && is_array($body["prices"]))
                 ? $body["prices"]
                 : array("monthly" => 0, "6months" => 0, "yearly" => 0),
@@ -3084,14 +3205,60 @@ function lumiere_super_admin_handle($method, $route, $id, $body, $headers) {
                 return array("status" => 403, "body" => array("error" => "forbidden"));
             }
             $plan = $plans[$idx];
-            foreach (array("name", "description", "status", "displayOrder", "entitlements", "prices") as $key) {
+            foreach (array("name", "description", "status", "displayOrder", "entitlements", "prices", "marketingFeatures") as $key) {
                 if (array_key_exists($key, $body)) $plan[$key] = $body[$key];
+            }
+            if (array_key_exists("entitlements", $body)) {
+                $plan["entitlements"] = lumiere_normalize_entitlements(
+                    is_array($body["entitlements"]) ? $body["entitlements"] : array(),
+                    false
+                );
+            }
+            if (array_key_exists("marketingFeatures", $body)) {
+                $plan["marketingFeatures"] = lumiere_sa_normalize_marketing_features($body["marketingFeatures"]);
             }
             $plan["updatedAt"] = lumiere_sa_iso();
             $plans[$idx] = $plan;
             lumiere_sa_save_collection("plans", $plans);
             lumiere_sa_audit($admin, "edit_plan", "plan", $plan["id"], $ip);
             return array("status" => 200, "body" => array("plan" => $plan));
+        }
+        if ($method === "DELETE") {
+            if (!lumiere_sa_has_permission($admin, "plans.write")) {
+                return array("status" => 403, "body" => array("error" => "forbidden"));
+            }
+            $subs = lumiere_sa_load_collection("subscriptions", array());
+            if (!is_array($subs)) $subs = array();
+            foreach ($subs as $s) {
+                if (!is_array($s)) continue;
+                if (isset($s["planId"]) && $s["planId"] === $itemId) {
+                    return array(
+                        "status" => 409,
+                        "body" => array(
+                            "error" => "plan_in_use",
+                            "message" => "این پلن به اشتراک متصل است. ابتدا وضعیت آن را مخفی کنید یا اشتراک‌ها را تغییر دهید.",
+                        ),
+                    );
+                }
+            }
+            $cafes = lumiere_sa_load_collection("cafes", array());
+            if (!is_array($cafes)) $cafes = array();
+            foreach ($cafes as $c) {
+                if (!is_array($c)) continue;
+                if (isset($c["planId"]) && $c["planId"] === $itemId) {
+                    return array(
+                        "status" => 409,
+                        "body" => array(
+                            "error" => "plan_in_use",
+                            "message" => "این پلن به کافه متصل است. ابتدا وضعیت آن را مخفی کنید یا پلن کافه را عوض کنید.",
+                        ),
+                    );
+                }
+            }
+            array_splice($plans, $idx, 1);
+            lumiere_sa_save_collection("plans", $plans);
+            lumiere_sa_audit($admin, "delete_plan", "plan", $itemId, $ip);
+            return array("status" => 200, "body" => array("ok" => true, "id" => $itemId));
         }
     }
 
@@ -3465,7 +3632,7 @@ function lumiere_super_admin_handle($method, $route, $id, $body, $headers) {
         $tickets = lumiere_sa_enrich_support_tickets($tickets);
         return array(
             "status" => 200,
-            "body" => lumiere_sa_filter_page($tickets, array("id", "subject", "tenantId", "status", "priority", "cafeName", "cafeOwnerEmail", "cafeOwnerName")),
+            "body" => lumiere_sa_filter_page($tickets, array("id", "subject", "tenantId", "status", "priority", "cafeName", "cafeOwnerEmail", "cafeOwnerName", "cafeOwnerPhone", "source")),
         );
     }
 

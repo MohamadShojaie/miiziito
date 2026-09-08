@@ -812,6 +812,7 @@ export function SupportPage({ onNavigate }: { onNavigate: (href: string) => void
                         {t.needsAdminReply && !t.isNew ? (
                           <span className="sa-ticket-reply-pill">نیاز به پاسخ</span>
                         ) : null}
+                        {t.source === "landing" ? <span className="sa-ticket-reply-pill">وب‌سایت</span> : null}
                       </div>
                     </td>
                     <td data-label="کاربر">
@@ -820,6 +821,11 @@ export function SupportPage({ onNavigate }: { onNavigate: (href: string) => void
                         {t.cafeOwnerEmail ? (
                           <span className="sa-cafe-meta" dir="ltr">
                             {t.cafeOwnerEmail}
+                          </span>
+                        ) : null}
+                        {t.cafeOwnerPhone ? (
+                          <span className="sa-cafe-meta" dir="ltr">
+                            {t.cafeOwnerPhone}
                           </span>
                         ) : null}
                       </div>
@@ -905,7 +911,7 @@ export function SupportDetailPage({ id, onNavigate }: { id: string; onNavigate: 
   }
 
   const messagesOldestFirst = ticket?.messages || [];
-  const userLabel = [ticket?.cafeOwnerName, ticket?.cafeName, ticket?.cafeOwnerEmail]
+  const userLabel = [ticket?.cafeOwnerName, ticket?.cafeName, ticket?.cafeOwnerPhone, ticket?.cafeOwnerEmail]
     .filter(Boolean)
     .join(" · ");
 

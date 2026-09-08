@@ -86,8 +86,10 @@ export async function saFetch<T = unknown>(
   });
   const data = await res.json().catch(() => ({}));
   if (!res.ok) {
-    const err = new Error((data as { error?: string }).error || "request_failed");
-    (err as Error & { status?: number }).status = res.status;
+    const payload = data as { error?: string; message?: string };
+    const err = new Error(payload.message || payload.error || "request_failed");
+    (err as Error & { status?: number; code?: string }).status = res.status;
+    (err as Error & { status?: number; code?: string }).code = payload.error;
     throw err;
   }
   return data as T;

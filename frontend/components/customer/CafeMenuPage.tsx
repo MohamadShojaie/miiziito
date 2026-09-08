@@ -12,12 +12,15 @@ import { useCart } from "@/components/CartProvider";
 import { toPersianDigits } from "@/lib/format";
 import { resolveGuestTable } from "@/lib/table-session";
 import { getMenuTenantSlug, setMenuTenantSlug, tenantSlugFromPath } from "@/lib/tenant";
+import { apiJson } from "@/lib/api";
+import { normalizePlanAccess } from "@/lib/plan-access";
 
 export function CafeMenuPage() {
   const { count } = useCart();
   const [cartOpen, setCartOpen] = useState(false);
   const [waiterOpen, setWaiterOpen] = useState(false);
   const [reserveOpen, setReserveOpen] = useState(false);
+  const [canReserve, setCanReserve] = useState(false);
   const [lockedTable, setLockedTable] = useState("");
   const [slug, setSlug] = useState(() =>
     typeof window !== "undefined" ? tenantSlugFromPath() : ""
@@ -29,6 +32,11 @@ export function CafeMenuPage() {
     setSlug(s);
     const table = resolveGuestTable();
     if (table) setLockedTable(table);
+    apiJson<{ access?: unknown }>("/api/settings", { auth: false })
+      .then((data) => {
+        setCanReserve(normalizePlanAccess(data.access).entitlements.reservations);
+      })
+      .catch(() => setCanReserve(false));
   }, []);
 
   if (!slug) {
@@ -44,6 +52,7 @@ export function CafeMenuPage() {
     <>
       <CustomerMenu tenantSlug={slug} />
 
+      {canReserve ? (
       <button
         type="button"
         className="float-reserve"
@@ -54,6 +63,7 @@ export function CafeMenuPage() {
         <span className="float-reserve-icon" aria-hidden="true" />
         <span className="float-reserve-label">رزرو میز</span>
       </button>
+      ) : null}
 
       <button
         type="button"
@@ -89,11 +99,13 @@ export function CafeMenuPage() {
         onClose={() => setWaiterOpen(false)}
         lockedTable={lockedTable}
       />
+      {canReserve ? (
       <ReserveModal
         open={reserveOpen}
         onClose={() => setReserveOpen(false)}
         lockedTable={lockedTable}
       />
+      ) : null}
     </>
   );
 }

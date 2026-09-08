@@ -340,3 +340,123 @@ function lumiere_tenant_cashier_auth_meta($tenantId) {
         "hasPassword" => lumiere_tenant_has_cashier_password($tenantId),
     );
 }
+
+function lumiere_entitlement_flag_keys() {
+    return array(
+        "invoices",
+        "reservations",
+        "coupons",
+        "advancedAnalytics",
+        "paymentTerminal",
+        "crm",
+        "hardware",
+        "kitchenPrint",
+        "tableOps",
+    );
+}
+
+function lumiere_entitlement_label($feature) {
+    $labels = array(
+        "invoices" => "فاکتور",
+        "reservations" => "رزرو میز",
+        "coupons" => "کوپن",
+        "advancedAnalytics" => "آمار فروش",
+        "paymentTerminal" => "پایانه پرداخت",
+        "crm" => "باشگاه مشتریان",
+        "hardware" => "سخت‌افزار و پرینتر",
+        "kitchenPrint" => "چاپ تیکت آشپزخانه و بار",
+        "tableOps" => "وضعیت میز و سفارش از نقشه میزها",
+    );
+    $feature = (string) $feature;
+    return isset($labels[$feature]) ? $labels[$feature] : $feature;
+}
+
+function lumiere_normalize_entitlements($raw, $defaultTrue = false) {
+    $src = is_array($raw) ? $raw : array();
+    $out = array();
+    foreach (lumiere_entitlement_flag_keys() as $key) {
+        if (array_key_exists($key, $src)) {
+            $out[$key] = !empty($src[$key]);
+        } else {
+            $out[$key] = !!$defaultTrue;
+        }
+    }
+    return $out;
+}
+
+function lumiere_default_plan_entitlements($tier) {
+    $ent = lumiere_normalize_entitlements(array(), false);
+    if ($tier === "professional" || $tier === "business") {
+        foreach (array("invoices", "reservations", "coupons", "advancedAnalytics", "paymentTerminal", "tableOps") as $key) {
+            $ent[$key] = true;
+        }
+    }
+    if ($tier === "business") {
+        foreach (array("crm", "hardware", "kitchenPrint") as $key) {
+            $ent[$key] = true;
+        }
+    }
+    return $ent;
+}
+
+function lumiere_tenant_plan_access($cafe) {
+    if (!is_array($cafe) || empty($cafe["id"])) {
+        return array(
+            "planId" => "",
+            "planName" => "",
+            "entitlements" => lumiere_normalize_entitlements(array(), true),
+        );
+    }
+    $plans = array();
+    $subs = array();
+    if (function_exists("lumiere_sa_ensure_platform")) {
+        lumiere_sa_ensure_platform();
+    }
+    if (function_exists("lumiere_sa_load_collection")) {
+        $plans = lumiere_sa_load_collection("plans", array());
+        if (!is_array($plans)) $plans = array();
+        $subs = lumiere_sa_load_collection("subscriptions", array());
+        if (!is_array($subs)) $subs = array();
+    }
+    $planMap = array();
+    foreach ($plans as $p) {
+        if (is_array($p) && !empty($p["id"])) {
+            $planMap[(string) $p["id"]] = $p;
+        }
+    }
+    $tenantId = (string) $cafe["id"];
+    $tenantSubs = array();
+    foreach ($subs as $s) {
+        if (!is_array($s)) continue;
+        if ((string) (isset($s["tenantId"]) ? $s["tenantId"] : "") !== $tenantId) continue;
+        $tenantSubs[] = $s;
+    }
+    usort($tenantSubs, function ($a, $b) {
+        $av = isset($a["createdAt"]) ? (string) $a["createdAt"] : "";
+        $bv = isset($b["createdAt"]) ? (string) $b["createdAt"] : "";
+        return strcmp($bv, $av);
+    });
+    $current = null;
+    foreach ($tenantSubs as $s) {
+        $st = isset($s["status"]) ? (string) $s["status"] : "";
+        if (in_array($st, array("trial", "active", "past_due", "grace_period"), true)) {
+            $current = $s;
+            break;
+        }
+    }
+    $planId = "";
+    if ($current && !empty($current["planId"])) {
+        $planId = (string) $current["planId"];
+    } elseif (!empty($cafe["planId"])) {
+        $planId = (string) $cafe["planId"];
+    }
+    $plan = ($planId !== "" && isset($planMap[$planId])) ? $planMap[$planId] : null;
+    $entRaw = ($plan && isset($plan["entitlements"]) && is_array($plan["entitlements"]))
+        ? $plan["entitlements"]
+        : array();
+    return array(
+        "planId" => $planId,
+        "planName" => ($plan && isset($plan["name"])) ? (string) $plan["name"] : "",
+        "entitlements" => lumiere_normalize_entitlements($entRaw, false),
+    );
+}

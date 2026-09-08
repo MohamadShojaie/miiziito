@@ -13,6 +13,7 @@ import {
   toPersianDigits,
 } from "@/lib/format";
 import { useToast } from "@/components/ToastProvider";
+import { usePlanAccess } from "@/components/admin/PlanAccess";
 import {
   InvoiceCheckoutModal,
   type CheckoutPayload,
@@ -195,6 +196,8 @@ export function TablesTab({
   onGoInvoices?: () => void;
 }) {
   const { showToast } = useToast();
+  const { has, requestUpgrade } = usePlanAccess();
+  const canTableOps = has("tableOps");
   const rooms = regions ?? [];
   const [selected, setSelected] = useState("");
   const [stateBusy, setStateBusy] = useState(false);
@@ -266,6 +269,10 @@ export function TablesTab({
   }
 
   async function setState(num: string, state: string) {
+    if (!has("tableOps")) {
+      requestUpgrade("tableOps");
+      return;
+    }
     setStateBusy(true);
     try {
       const data = await apiJson<{
@@ -282,7 +289,13 @@ export function TablesTab({
       });
       onUpdated(data);
       showToast("وضعیت میز ذخیره شد");
-    } catch {
+    } catch (err) {
+      const code =
+        err instanceof Error && err.message ? err.message : "request_failed";
+      if (code === "upgrade_required") {
+        requestUpgrade("tableOps");
+        return;
+      }
       showToast("ذخیره وضعیت ناموفق بود");
     } finally {
       setStateBusy(false);
@@ -527,7 +540,39 @@ export function TablesTab({
     }
   }
 
+  function openCheckout(order: Order) {
+    if (!has("tableOps")) {
+      requestUpgrade("tableOps");
+      return;
+    }
+    if (order.type === "waiter") {
+      showToast("سفارش گارسون فاکتور ندارد");
+      return;
+    }
+    if (!has("invoices")) {
+      requestUpgrade("invoices");
+      return;
+    }
+    setCheckoutOrder(order);
+  }
+
+  function startPreparing(order: Order) {
+    if (!has("tableOps")) {
+      requestUpgrade("tableOps");
+      return;
+    }
+    if (has("kitchenPrint")) {
+      setPrepareOrder(order);
+      return;
+    }
+    patchOrder(order.id, { status: "preparing" });
+  }
+
   async function patchOrder(orderId: string, body: Record<string, unknown>) {
+    if (!has("tableOps")) {
+      requestUpgrade("tableOps");
+      return;
+    }
     setBusyId(orderId);
     try {
       const data = await apiJson<{ orders?: Order[] }>(`/api/orders/${orderId}`, {
@@ -609,7 +654,12 @@ export function TablesTab({
         payment_mismatch: "مبلغ پرداخت با فاکتور هم‌خوانی ندارد",
         customer_required: "برای فاکتور بدهکار نام مشتری الزامی است",
         guest_name_required: "نام هر نفر الزامی است",
+        upgrade_required: "این قابلیت در پلن فعلی فعال نیست",
       };
+      if (code === "upgrade_required") {
+        requestUpgrade("invoices");
+        return;
+      }
       showToast(hints[code] || "خطا در ثبت فاکتور");
     } finally {
       setBusyId("");
@@ -832,10 +882,15 @@ export function TablesTab({
 
                 <section className="table-glass-states">
                   <span className="table-glass-label">تغییر وضعیت</span>
+                  {!canTableOps ? (
+                    <p className="table-glass-lock-hint">
+                      در پلن پایه، تغییر وضعیت میز و مدیریت سفارش از این بخش قفل است.
+                    </p>
+                  ) : null}
                   <div className="table-glass-state-grid">
                     <button
                       type="button"
-                      className={`table-glass-state table-glass-state--free${selectedState === "free" ? " is-active" : ""}`}
+                      className={`table-glass-state table-glass-state--free${selectedState === "free" ? " is-active" : ""}${!canTableOps ? " is-locked" : ""}`}
                       disabled={stateBusy}
                       onClick={() => setState(selected, "free")}
                     >
@@ -850,7 +905,7 @@ export function TablesTab({
                     </button>
                     <button
                       type="button"
-                      className={`table-glass-state table-glass-state--full${selectedState === "full" ? " is-active" : ""}`}
+                      className={`table-glass-state table-glass-state--full${selectedState === "full" ? " is-active" : ""}${!canTableOps ? " is-locked" : ""}`}
                       disabled={stateBusy}
                       onClick={() => setState(selected, "full")}
                     >
@@ -863,7 +918,7 @@ export function TablesTab({
                     </button>
                     <button
                       type="button"
-                      className={`table-glass-state table-glass-state--reserved${selectedState === "reserved" ? " is-active" : ""}`}
+                      className={`table-glass-state table-glass-state--reserved${selectedState === "reserved" ? " is-active" : ""}${!canTableOps ? " is-locked" : ""}`}
                       disabled={stateBusy}
                       onClick={() => setState(selected, "reserved")}
                     >
@@ -878,7 +933,7 @@ export function TablesTab({
                     </button>
                     <button
                       type="button"
-                      className={`table-glass-state table-glass-state--disabled${selectedState === "disabled" ? " is-active" : ""}`}
+                      className={`table-glass-state table-glass-state--disabled${selectedState === "disabled" ? " is-active" : ""}${!canTableOps ? " is-locked" : ""}`}
                       disabled={stateBusy}
                       onClick={() => setState(selected, "disabled")}
                     >
@@ -942,11 +997,17 @@ export function TablesTab({
                               {onCompose ? (
                                 <button
                                   type="button"
-                                  className="cp-btn cp-btn--ghost"
+                                  className={`cp-btn cp-btn--ghost${!canTableOps ? " is-locked" : ""}`}
                                   disabled={busy}
-                                  onClick={() => onCompose(order)}
+                                  onClick={() => {
+                                    if (!has("tableOps")) {
+                                      requestUpgrade("tableOps");
+                                      return;
+                                    }
+                                    onCompose(order);
+                                  }}
                                 >
-                                  ویرایش
+                                  {!canTableOps ? "ویرایش (قفل)" : "ویرایش"}
                                 </button>
                               ) : null}
                             </header>
@@ -976,13 +1037,17 @@ export function TablesTab({
                               {next ? (
                                 <button
                                   type="button"
-                                  className={`orders-primary-btn${next.action === "invoice" ? " is-invoice" : ""}`}
+                                  className={`orders-primary-btn${next.action === "invoice" ? " is-invoice" : ""}${!canTableOps || (next.action === "invoice" && !has("invoices")) ? " is-locked" : ""}`}
                                   disabled={busy}
                                   onClick={() => {
+                                    if (!has("tableOps")) {
+                                      requestUpgrade("tableOps");
+                                      return;
+                                    }
                                     if (next.action === "invoice") {
-                                      setCheckoutOrder(order);
+                                      openCheckout(order);
                                     } else if (next.status === "preparing") {
-                                      setPrepareOrder(order);
+                                      startPreparing(order);
                                     } else if (next.status) {
                                       patchOrder(order.id, {
                                         status: next.status,
@@ -990,7 +1055,7 @@ export function TablesTab({
                                     }
                                   }}
                                 >
-                                  {next.label}
+                                  {!canTableOps ? `${next.label} (قفل)` : next.label}
                                 </button>
                               ) : null}
                               {order.type !== "waiter" &&
@@ -1000,11 +1065,15 @@ export function TablesTab({
                               next?.action !== "invoice" ? (
                                 <button
                                   type="button"
-                                  className="orders-primary-btn is-invoice"
+                                  className={`orders-primary-btn is-invoice${!canTableOps || !has("invoices") ? " is-locked" : ""}`}
                                   disabled={busy}
-                                  onClick={() => setCheckoutOrder(order)}
+                                  onClick={() => openCheckout(order)}
                                 >
-                                  ثبت فاکتور
+                                  {!canTableOps
+                                    ? "ثبت فاکتور (قفل)"
+                                    : !has("invoices")
+                                      ? "ثبت فاکتور (قفل)"
+                                      : "ثبت فاکتور"}
                                 </button>
                               ) : null}
                             </footer>

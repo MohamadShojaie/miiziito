@@ -117,7 +117,7 @@ export function CafePortalPage({
   const [requests, setRequests] = useState<RequestRow[]>([]);
   const [plans, setPlans] = useState<Plan[]>([]);
   const [planId, setPlanId] = useState(preselectPlan || "");
-  const [cycle, setCycle] = useState(preselectCycle || "monthly");
+  const [cycle, setCycle] = useState(preselectCycle === "yearly" ? "yearly" : "6months");
   const [note, setNote] = useState("");
   const [sending, setSending] = useState(false);
   const [paymentRef, setPaymentRef] = useState("");
@@ -197,7 +197,7 @@ export function CafePortalPage({
   }, []);
 
   const selected = useMemo(() => plans.find((p) => p.id === planId), [plans, planId]);
-  const price = selected?.prices?.[cycle as "monthly" | "6months" | "yearly"] ?? 0;
+  const price = selected?.prices?.[cycle as "6months" | "yearly"] ?? 0;
   const activeRequest = useMemo(
     () =>
       requests.find((r) =>
@@ -677,7 +677,6 @@ export function CafePortalPage({
             <div className="sa-field">
               <label className="sa-label">دوره</label>
               <select className="sa-select" value={cycle} onChange={(e) => setCycle(e.target.value)}>
-                <option value="monthly">ماهانه</option>
                 <option value="6months">۶ ماهه</option>
                 <option value="yearly">سالانه</option>
               </select>

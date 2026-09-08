@@ -303,3 +303,109 @@ def verify_tenant_cashier_password(tenant_id: str, entered: str) -> bool | None:
 
 def cashier_auth_meta(tenant_id: str) -> dict:
     return {"hasPassword": has_cashier_password(tenant_id)}
+
+
+ENTITLEMENT_FLAGS = (
+    "invoices",
+    "reservations",
+    "coupons",
+    "advancedAnalytics",
+    "paymentTerminal",
+    "crm",
+    "hardware",
+    "kitchenPrint",
+    "tableOps",
+)
+
+ENTITLEMENT_LABELS_FA = {
+    "invoices": "فاکتور",
+    "reservations": "رزرو میز",
+    "coupons": "کوپن",
+    "advancedAnalytics": "آمار فروش",
+    "paymentTerminal": "پایانه پرداخت",
+    "crm": "باشگاه مشتریان",
+    "hardware": "سخت‌افزار و پرینتر",
+    "kitchenPrint": "چاپ تیکت آشپزخانه و بار",
+    "tableOps": "وضعیت میز و سفارش از نقشه میزها",
+}
+
+
+def normalize_entitlements(raw, default_true: bool = False) -> dict:
+    src = raw if isinstance(raw, dict) else {}
+    out = {}
+    for key in ENTITLEMENT_FLAGS:
+        if key in src:
+            out[key] = bool(src[key])
+        else:
+            out[key] = bool(default_true)
+    return out
+
+
+def default_plan_entitlements(tier: str) -> dict:
+    ent = normalize_entitlements({}, False)
+    if tier in ("professional", "business"):
+        for key in (
+            "invoices",
+            "reservations",
+            "coupons",
+            "advancedAnalytics",
+            "paymentTerminal",
+            "tableOps",
+        ):
+            ent[key] = True
+    if tier == "business":
+        for key in ("crm", "hardware", "kitchenPrint"):
+            ent[key] = True
+    return ent
+
+
+def _load_platform_list(name: str) -> list:
+    path = PLATFORM / f"{name}.json"
+    if not path.is_file():
+        return []
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except Exception:
+        return []
+    return data if isinstance(data, list) else []
+
+
+def resolve_plan_access(cafe) -> dict:
+    if not isinstance(cafe, dict) or not cafe.get("id"):
+        return {
+            "planId": "",
+            "planName": "",
+            "entitlements": normalize_entitlements({}, True),
+        }
+    plans = _load_platform_list("plans")
+    plan_map = {
+        str(p.get("id") or ""): p
+        for p in plans
+        if isinstance(p, dict) and p.get("id")
+    }
+    tenant_id = str(cafe.get("id") or "")
+    tenant_subs = [
+        s
+        for s in _load_platform_list("subscriptions")
+        if isinstance(s, dict) and str(s.get("tenantId") or "") == tenant_id
+    ]
+    tenant_subs = sorted(
+        tenant_subs, key=lambda s: str(s.get("createdAt") or ""), reverse=True
+    )
+    current = None
+    for s in tenant_subs:
+        if s.get("status") in ("trial", "active", "past_due", "grace_period"):
+            current = s
+            break
+    plan_id = ""
+    if current and current.get("planId"):
+        plan_id = str(current.get("planId") or "")
+    elif cafe.get("planId"):
+        plan_id = str(cafe.get("planId") or "")
+    plan = plan_map.get(plan_id) if plan_id else None
+    ent_raw = (plan or {}).get("entitlements") if isinstance(plan, dict) else {}
+    return {
+        "planId": plan_id,
+        "planName": str((plan or {}).get("name") or "") if plan else "",
+        "entitlements": normalize_entitlements(ent_raw, False),
+    }

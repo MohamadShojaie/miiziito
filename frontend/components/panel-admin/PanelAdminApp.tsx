@@ -512,6 +512,13 @@ export function PanelAdminApp() {
                 <button
                   type="button"
                   className="sa-btn sa-btn-ghost sa-btn-sm"
+                  onClick={() => navigate("/panel-admin/plans/")}
+                >
+                  پلن‌ها
+                </button>
+                <button
+                  type="button"
+                  className="sa-btn sa-btn-ghost sa-btn-sm"
                   onClick={() => navigate("/panel-admin/requests/")}
                 >
                   درخواست‌ها

@@ -132,8 +132,8 @@ export function CafeDetailPage({
           tenantId: cafe.id,
           planId: plans[0].id,
           status: "trial",
-          billingCycle: "monthly",
-          price: plans[0].prices?.monthly || 0,
+          billingCycle: "6months",
+          price: plans[0].prices?.["6months"] || plans[0].prices?.yearly || 0,
         }),
       });
       toast("اشتراک آزمایشی ساخته شد", "success");

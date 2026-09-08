@@ -804,6 +804,8 @@ export function ReserveModal({
         setError("نام را وارد کنید");
       } else if (code === "phone_required") {
         setError("شماره تماس معتبر وارد کنید");
+      } else if (code === "upgrade_required") {
+        setError("رزرو میز در این کافه فعال نیست");
       } else if (code === "unknown_route" || code === "Failed to fetch") {
         setError("ارتباط با سرور برقرار نشد — صفحه را تازه کنید");
       } else {

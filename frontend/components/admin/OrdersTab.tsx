@@ -14,6 +14,7 @@ import {
 } from "@/lib/format";
 import { ORDER_STATUS_LABEL, tablesFromRegions } from "@/lib/types";
 import { useToast } from "@/components/ToastProvider";
+import { usePlanAccess } from "@/components/admin/PlanAccess";
 import {
   InvoiceCheckoutModal,
   type CheckoutPayload,
@@ -225,6 +226,7 @@ export function OrdersTab({
   onGoInvoices?: () => void;
 }) {
   const { showToast } = useToast();
+  const { has, requestUpgrade } = usePlanAccess();
   const [filter, setFilter] = useState("all");
   const [q, setQ] = useState("");
   const [busyId, setBusyId] = useState("");
@@ -394,7 +396,19 @@ export function OrdersTab({
       showToast("سفارش گارسون فاکتور ندارد");
       return;
     }
+    if (!has("invoices")) {
+      requestUpgrade("invoices");
+      return;
+    }
     setCheckoutOrder(order);
+  }
+
+  function startPreparing(order: Order) {
+    if (has("kitchenPrint")) {
+      setPrepareOrder(order);
+      return;
+    }
+    patch(order.id, { status: "preparing" });
   }
 
   async function submitInvoice(order: Order, checkout: CheckoutPayload) {
@@ -471,7 +485,12 @@ export function OrdersTab({
         payment_mismatch: "مبلغ پرداخت با فاکتور هم‌خوانی ندارد",
         customer_required: "برای فاکتور بدهکار نام مشتری الزامی است",
         guest_name_required: "نام هر نفر الزامی است",
+        upgrade_required: "این قابلیت در پلن فعلی فعال نیست",
       };
+      if (code === "upgrade_required") {
+        requestUpgrade("invoices");
+        return;
+      }
       showToast(hints[code] || "خطا در ثبت فاکتور");
     } finally {
       setBusyId("");
@@ -661,13 +680,13 @@ export function OrdersTab({
                   {next ? (
                     <button
                       type="button"
-                      className={`orders-primary-btn${next.action === "invoice" ? " is-invoice" : ""}`}
+                      className={`orders-primary-btn${next.action === "invoice" ? " is-invoice" : ""}${next.action === "invoice" && !has("invoices") ? " is-locked" : ""}`}
                       disabled={busy}
                       onClick={() => {
                         if (next.action === "invoice") {
                           openCheckout(order);
                         } else if (next.status === "preparing") {
-                          setPrepareOrder(order);
+                          startPreparing(order);
                         } else if (next.status) {
                           patch(order.id, { status: next.status });
                         }
@@ -740,7 +759,7 @@ export function OrdersTab({
                               closeMenu();
                             }}
                           >
-                            ثبت فاکتور
+                            {!has("invoices") ? "ثبت فاکتور (قفل)" : "ثبت فاکتور"}
                           </button>
                         ) : null}
                         <button

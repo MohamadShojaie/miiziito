@@ -159,14 +159,18 @@ try:
         is_cafe_live,
         provision_tenant,
         request_tenant_slug,
+        resolve_plan_access,
         verify_tenant_cashier_password,
+        ENTITLEMENT_LABELS_FA,
     )
 except Exception as _tenant_import_err:  # pragma: no cover
     find_cafe_by_slug = None
     is_cafe_live = None
     provision_tenant = None
     request_tenant_slug = None
+    resolve_plan_access = None
     verify_tenant_cashier_password = None
+    ENTITLEMENT_LABELS_FA = {}
     print(f"[api] tenant_slug module unavailable: {_tenant_import_err}")
 
 
@@ -261,11 +265,13 @@ def clear_request_sandbox() -> None:
 
 def clear_request_tenant() -> None:
     _request_ctx.tenant = ""
+    _request_ctx.cafe = None
 
 
-def set_request_tenant(tenant_id: str) -> None:
+def set_request_tenant(tenant_id: str, cafe=None) -> None:
     tid = re.sub(r"[^a-zA-Z0-9_-]", "", str(tenant_id or ""))
     _request_ctx.tenant = tid
+    _request_ctx.cafe = cafe if isinstance(cafe, dict) else None
 
 
 def active_tenant() -> str:
@@ -2007,7 +2013,47 @@ def orders_payload(include_invoices: bool):
     payload["since"] = live_stamp()
     if include_invoices:
         payload["invoices"] = read_json(INVOICES, [])
+    return apply_plan_live_filters(payload)
+
+
+def current_plan_access() -> dict:
+    cafe = getattr(_request_ctx, "cafe", None)
+    if resolve_plan_access:
+        return resolve_plan_access(cafe)
+    unlocked = {
+        "invoices": True,
+        "reservations": True,
+        "coupons": True,
+        "advancedAnalytics": True,
+        "paymentTerminal": True,
+        "crm": True,
+        "hardware": True,
+        "kitchenPrint": True,
+        "tableOps": True,
+    }
+    return {"planId": "", "planName": "", "entitlements": unlocked}
+
+
+def apply_plan_live_filters(payload: dict) -> dict:
+    ents = (current_plan_access().get("entitlements") or {})
+    if not ents.get("invoices"):
+        payload.pop("invoices", None)
+        payload.pop("summary", None)
+    if not ents.get("reservations"):
+        payload["reservations"] = []
     return payload
+
+
+def printer_type_for_request(devices, body) -> str:
+    printer = body.get("printer") if isinstance(body.get("printer"), dict) else None
+    if printer:
+        return str(printer.get("type") or "")
+    pid = str(body.get("printerId") or body.get("id") or "").strip()
+    if pid:
+        for row in devices or []:
+            if isinstance(row, dict) and str(row.get("id") or "") == pid:
+                return str(row.get("type") or "")
+    return ""
 
 
 def invoice_discount(subtotal: int, dtype: str, value) -> tuple[str, float, int]:
@@ -2160,6 +2206,24 @@ class Handler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(raw)
 
+    def require_entitlement(self, feature: str) -> bool:
+        access = current_plan_access()
+        ents = access.get("entitlements") if isinstance(access.get("entitlements"), dict) else {}
+        if ents.get(feature):
+            return True
+        label = ENTITLEMENT_LABELS_FA.get(feature, feature)
+        self._json(
+            403,
+            {
+                "error": "upgrade_required",
+                "feature": feature,
+                "message": f"قابلیت «{label}» در پلن فعلی فعال نیست. برای استفاده، پلن را ارتقا یا تمدید کنید.",
+                "planId": access.get("planId") or "",
+                "planName": access.get("planName") or "",
+            },
+        )
+        return False
+
     def _read_body(self):
         length = int(self.headers.get("Content-Length") or 0)
         if length <= 0:
@@ -2275,7 +2339,7 @@ class Handler(BaseHTTPRequestHandler):
             else:
                 if provision_tenant:
                     provision_tenant(cafe)
-                set_request_tenant(str(cafe.get("id") or ""))
+                set_request_tenant(str(cafe.get("id") or ""), cafe)
 
         session = session_ok(token)
         is_dev = isinstance(session, dict) and session.get("role") == "dev"
@@ -2705,6 +2769,8 @@ class Handler(BaseHTTPRequestHandler):
                 return self._json(400, {"error": "table_required"})
             if table not in known_table_set(layout):
                 return self._json(400, {"error": "table_unknown"})
+            if not self.require_entitlement("tableOps"):
+                return
             state = str(body.get("state") or "open")
             if state not in ("open", "full", "disabled", "reserved"):
                 return self._json(400, {"error": "invalid_state"})
@@ -2725,9 +2791,13 @@ class Handler(BaseHTTPRequestHandler):
         if route == "reservations" and method == "GET":
             if not session:
                 return self._json(401, {"error": "auth_required"})
+            if not self.require_entitlement("reservations"):
+                return
             return self._json(200, reservations_payload())
 
         if route == "reservations" and method == "POST":
+            if not self.require_entitlement("reservations"):
+                return
             action = str(body.get("action") or "")
             now = int(time.time() * 1000)
 
@@ -2871,12 +2941,14 @@ class Handler(BaseHTTPRequestHandler):
         if route == "stats" and method == "GET":
             if not session:
                 return self._json(401, {"error": "auth_required"})
+            if not self.require_entitlement("advancedAnalytics"):
+                return
             invoices = read_json(INVOICES, [])
             return self._json(200, {"stats": compute_invoice_stats(invoices)})
 
         if route == "settings" and method == "GET":
             settings = read_site_settings()
-            payload = {"settings": settings}
+            payload = {"settings": settings, "access": current_plan_access()}
             if session:
                 payload["summary"] = compute_settings_summary(
                     read_json(ORDERS, []),
@@ -2908,11 +2980,15 @@ class Handler(BaseHTTPRequestHandler):
         if route == "customers" and method == "GET":
             if not session:
                 return self._json(401, {"error": "auth_required"})
+            if not self.require_entitlement("crm"):
+                return
             return self._json(200, {"customers": visible_customers(read_customers())})
 
         if route == "customers" and method == "POST":
             if not session:
                 return self._json(401, {"error": "auth_required"})
+            if not self.require_entitlement("crm"):
+                return
             customers = read_customers()
             action = str(body.get("action") or "add")
 
@@ -3036,11 +3112,15 @@ class Handler(BaseHTTPRequestHandler):
         if route == "coupons" and method == "GET":
             if not session:
                 return self._json(401, {"error": "auth_required"})
+            if not self.require_entitlement("coupons"):
+                return
             return self._json(200, {"coupons": sort_coupons(read_coupons())})
 
         if route == "coupons" and method == "POST":
             if not session:
                 return self._json(401, {"error": "auth_required"})
+            if not self.require_entitlement("coupons"):
+                return
             coupons = read_coupons()
             action = str(body.get("action") or "add")
             messages = {
@@ -3155,11 +3235,15 @@ class Handler(BaseHTTPRequestHandler):
         if route == "hardware" and method == "GET":
             if not session:
                 return self._json(401, {"error": "auth_required"})
+            if not self.require_entitlement("hardware"):
+                return
             return self._json(200, {"devices": sort_hardware(read_hardware())})
 
         if route == "hardware" and method == "POST":
             if not session:
                 return self._json(401, {"error": "auth_required"})
+            if not self.require_entitlement("hardware"):
+                return
             devices = read_hardware()
             action = str(body.get("action") or "add")
 
@@ -3354,6 +3438,18 @@ class Handler(BaseHTTPRequestHandler):
                 return self._json(503, {"error": "printer_unavailable"})
             action = str(body.get("action") or "discover")
             devices = read_hardware()
+            if action != "capabilities":
+                if action == "print":
+                    ptype = printer_type_for_request(devices, body)
+                    feature = (
+                        "kitchenPrint"
+                        if ptype in ("kitchen_printer", "bar_printer")
+                        else "invoices"
+                    )
+                    if not self.require_entitlement(feature):
+                        return
+                elif not self.require_entitlement("hardware"):
+                    return
 
             if action == "capabilities":
                 return self._json(200, printer_capabilities())
@@ -3424,11 +3520,15 @@ class Handler(BaseHTTPRequestHandler):
         if route == "invoices" and method == "GET":
             if not session:
                 return self._json(401, {"error": "auth_required"})
+            if not self.require_entitlement("invoices"):
+                return
             return self._json(200, {"invoices": read_json(INVOICES, [])})
 
         if route == "invoices" and method == "POST":
             if not session:
                 return self._json(401, {"error": "auth_required"})
+            if not self.require_entitlement("invoices"):
+                return
             order_id = str(body.get("orderId") or "")
             if not order_id:
                 return self._json(400, {"error": "order_required"})
@@ -3781,6 +3881,8 @@ class Handler(BaseHTTPRequestHandler):
         if route == "invoice-item" and item_id:
             if not session:
                 return self._json(401, {"error": "auth_required"})
+            if not self.require_entitlement("invoices"):
+                return
             if method not in ("POST", "PATCH"):
                 return self._json(405, {"error": "method"})
             invoices = read_json(INVOICES, [])
@@ -4061,6 +4163,8 @@ class Handler(BaseHTTPRequestHandler):
         if route == "payment-terminals" and method == "GET":
             if not session:
                 return self._json(401, {"error": "auth_required"})
+            if not self.require_entitlement("paymentTerminal"):
+                return
             if not normalize_terminal:
                 return self._json(503, {"error": "payment_unavailable"})
             return self._json(
@@ -4070,6 +4174,8 @@ class Handler(BaseHTTPRequestHandler):
         if route == "payment-terminals" and method == "POST":
             if not session:
                 return self._json(401, {"error": "auth_required"})
+            if not self.require_entitlement("paymentTerminal"):
+                return
             if not normalize_terminal:
                 return self._json(503, {"error": "payment_unavailable"})
             terminals = read_payment_terminals()
@@ -4194,6 +4300,8 @@ class Handler(BaseHTTPRequestHandler):
         if route == "payment-agent" and method == "POST":
             if not session:
                 return self._json(401, {"error": "auth_required"})
+            if not self.require_entitlement("paymentTerminal"):
+                return
             if not payment_sale:
                 return self._json(503, {"error": "payment_unavailable"})
             headers = {k: v for k, v in self.headers.items()}
@@ -4239,6 +4347,8 @@ class Handler(BaseHTTPRequestHandler):
         if route == "payment-item" and method == "GET":
             if not session:
                 return self._json(401, {"error": "auth_required"})
+            if not self.require_entitlement("paymentTerminal"):
+                return
             if not find_payment:
                 return self._json(503, {"error": "payment_unavailable"})
             pid = str(item_id or "").strip()
@@ -4250,6 +4360,8 @@ class Handler(BaseHTTPRequestHandler):
         if route == "payments" and method == "GET":
             if not session:
                 return self._json(401, {"error": "auth_required"})
+            if not self.require_entitlement("paymentTerminal"):
+                return
             payments = [normalize_payment(p) for p in read_payments() if isinstance(p, dict)]
             payments.sort(key=lambda p: -int(p.get("createdAt") or 0))
             return self._json(200, {"payments": payments})
@@ -4257,6 +4369,8 @@ class Handler(BaseHTTPRequestHandler):
         if route == "payments" and method == "POST":
             if not session:
                 return self._json(401, {"error": "auth_required"})
+            if not self.require_entitlement("paymentTerminal"):
+                return
             if not payment_sale or not normalize_payment:
                 return self._json(503, {"error": "payment_unavailable"})
             headers = {k: v for k, v in self.headers.items()}

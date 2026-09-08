@@ -50,7 +50,7 @@ export function LoginPage({
     const params = new URLSearchParams(window.location.search);
     const plan = params.get("plan");
     const cycle = params.get("cycle");
-    if (plan) setCheckout({ plan, cycle: cycle || "monthly" });
+    if (plan) setCheckout({ plan, cycle: cycle === "yearly" ? "yearly" : "6months" });
   }, []);
 
   async function submit(e: React.FormEvent) {

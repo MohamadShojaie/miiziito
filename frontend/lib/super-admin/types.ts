@@ -54,6 +54,8 @@ export type Plan = {
   status: string;
   displayOrder: number;
   entitlements: Record<string, number | boolean>;
+  /** Landing-page benefit bullets (editable in super-admin). */
+  marketingFeatures?: string[];
   prices: { monthly: number; "6months": number; yearly: number };
   createdAt: string;
   updatedAt: string;
@@ -121,6 +123,8 @@ export type SupportTicket = {
   cafeName?: string;
   cafeOwnerName?: string;
   cafeOwnerEmail?: string;
+  cafeOwnerPhone?: string;
+  source?: string;
   subject: string;
   priority: string;
   status: string;

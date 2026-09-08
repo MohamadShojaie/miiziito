@@ -21,9 +21,11 @@ if str(TOOLS) not in sys.path:
 from tenant_slug import (
     assign_slug,
     cashier_auth_meta,
+    default_plan_entitlements,
     ensure_cafe_slugs,
     generate_cashier_password,
     has_cashier_password,
+    normalize_entitlements,
     provision_live_cafes,
     provision_tenant,
     set_tenant_cashier_password,
@@ -146,30 +148,24 @@ DEFAULT_PLANS = [
     {
         "id": "plan_basic",
         "name": "پایه",
-        "description": "منوی دیجیتال و امکانات ضروری",
+        "description": "منوی دیجیتال، سفارش سر میز و مدیریت روزمره کافه",
         "status": "active",
         "displayOrder": 1,
-        "entitlements": {
-            "maxUsers": 3,
-            "maxBranches": 1,
-            "maxMenuItems": 100,
-            "maxCategories": 20,
-            "maxOrdersPerMonth": 1000,
-            "maxCustomers": 500,
-            "storageMb": 500,
-            "digitalMenu": True,
-            "qrMenu": True,
-            "orderManagement": True,
-            "cashier": True,
-            "crm": False,
-            "paymentTerminal": False,
-            "advancedAnalytics": False,
-            "multipleUsers": True,
-            "multipleBranches": False,
-            "customBranding": False,
-            "customDomain": False,
-            "prioritySupport": False,
-        },
+        "marketingFeatures": [
+            "منوی دیجیتال QR بدون نصب اپ",
+            "چند چیدمان منو",
+            "برندینگ نام، لوگو، رنگ و پس‌زمینه",
+            "دسته‌بندی و آیتم با تصویر، قیمت و توضیح",
+            "برچسب جدید، تمام‌شد و تاپینگ",
+            "سبد خرید و سفارش سر میز",
+            "قفل میز با QR",
+            "صدازدن گارسون",
+            "هشدار صوتی و اتصال زنده سفارش",
+            "مدیریت منو و تعریف میز و سالن",
+            "ثبت دستی و پیگیری وضعیت سفارش",
+            "تنظیمات کافه و پیش‌نمایش منو",
+        ],
+        "entitlements": default_plan_entitlements("basic"),
         "prices": {
             "monthly": 990000,
             "6months": 5400000,
@@ -179,30 +175,25 @@ DEFAULT_PLANS = [
     {
         "id": "plan_professional",
         "name": "حرفه‌ای",
-        "description": "صندوق، باشگاه مشتریان و ابزار رشد",
+        "description": "فاکتور، رزرو میز، کوپن و آمار فروش",
         "status": "active",
         "displayOrder": 2,
-        "entitlements": {
-            "maxUsers": 10,
-            "maxBranches": 3,
-            "maxMenuItems": 500,
-            "maxCategories": 50,
-            "maxOrdersPerMonth": 10000,
-            "maxCustomers": 5000,
-            "storageMb": 5000,
-            "digitalMenu": True,
-            "qrMenu": True,
-            "orderManagement": True,
-            "cashier": True,
-            "crm": True,
-            "paymentTerminal": True,
-            "advancedAnalytics": True,
-            "multipleUsers": True,
-            "multipleBranches": True,
-            "customBranding": True,
-            "customDomain": False,
-            "prioritySupport": False,
-        },
+        "marketingFeatures": [
+            "منوی دیجیتال QR و چند چیدمان",
+            "برندینگ کامل منو",
+            "دسته‌بندی، آیتم، تاپینگ و موجودی",
+            "سفارش سر میز، قفل QR و گارسون",
+            "پنل سفارش زنده با هشدار صوتی",
+            "وضعیت میز و مدیریت سفارش از نقشه میزها",
+            "مدیریت سالن و QR اختصاصی",
+            "رزرو میز از منوی مشتری",
+            "فاکتور نقد، کارت، تقسیم، نسیه و مالیات",
+            "تخفیف دستی، کوپن و خروجی Excel/PDF",
+            "چاپ رسید عادی و حرارتی",
+            "کارتخوان و پایانه پرداخت",
+            "آمار فروش و گزارش بدهکارها",
+        ],
+        "entitlements": default_plan_entitlements("professional"),
         "prices": {
             "monthly": 2490000,
             "6months": 13500000,
@@ -212,30 +203,24 @@ DEFAULT_PLANS = [
     {
         "id": "plan_business",
         "name": "کسب‌وکار",
-        "description": "چندشعبه‌ای و پشتیبانی اولویت‌دار",
+        "description": "باشگاه مشتریان، چاپ آشپزخانه و خدمات اختصاصی",
         "status": "active",
         "displayOrder": 3,
-        "entitlements": {
-            "maxUsers": 50,
-            "maxBranches": 20,
-            "maxMenuItems": 5000,
-            "maxCategories": 200,
-            "maxOrdersPerMonth": 100000,
-            "maxCustomers": 50000,
-            "storageMb": 50000,
-            "digitalMenu": True,
-            "qrMenu": True,
-            "orderManagement": True,
-            "cashier": True,
-            "crm": True,
-            "paymentTerminal": True,
-            "advancedAnalytics": True,
-            "multipleUsers": True,
-            "multipleBranches": True,
-            "customBranding": True,
-            "customDomain": True,
-            "prioritySupport": True,
-        },
+        "marketingFeatures": [
+            "منوی دیجیتال QR با برندینگ کامل",
+            "سفارش سر میز، گارسون و اتصال زنده",
+            "مدیریت میز، سالن و رزرو",
+            "فاکتور کامل با کوپن، مالیات و خروجی فایل",
+            "کارتخوان و آمار فروش",
+            "چاپ تیکت آشپزخانه و بار",
+            "باشگاه مشتریان",
+            "پیامک و پیام گروهی برای مشتریان",
+            "مدیریت سخت‌افزار و پرینتر",
+            "دامنه اختصاصی",
+            "قالب و برندینگ اختصاصی",
+            "پشتیبانی ویژه",
+        ],
+        "entitlements": default_plan_entitlements("business"),
         "prices": {
             "monthly": 4990000,
             "6months": 27000000,
@@ -251,6 +236,20 @@ def _now() -> int:
 
 def _iso(ts: int | None = None) -> str:
     return time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(ts or _now()))
+
+
+def normalize_marketing_features(raw) -> list:
+    if not isinstance(raw, list):
+        return []
+    out = []
+    for line in raw:
+        s = str(line or "").strip()
+        if not s:
+            continue
+        out.append(s[:120])
+        if len(out) >= 30:
+            break
+    return out
 
 
 def _new_id(prefix: str) -> str:
@@ -492,6 +491,7 @@ def ensure_platform() -> None:
             "Professional": ("حرفه‌ای", "صندوق، باشگاه مشتریان و ابزار رشد"),
             "Business": ("کسب‌وکار", "چندشعبه‌ای و پشتیبانی اولویت‌دار"),
         }
+        defaults_by_id = {str(p.get("id") or ""): p for p in DEFAULT_PLANS if p.get("id")}
         changed = False
         for p in plans:
             key = str(p.get("name") or "")
@@ -499,6 +499,18 @@ def ensure_platform() -> None:
                 p["name"], p["description"] = rename[key]
                 p["updatedAt"] = _iso()
                 changed = True
+            feats = p.get("marketingFeatures")
+            has_marketing = isinstance(feats, list) and len(feats) > 0
+            if not has_marketing:
+                pid = str(p.get("id") or "")
+                seeded = defaults_by_id.get(pid, {}).get("marketingFeatures")
+                if isinstance(seeded, list) and seeded:
+                    p["marketingFeatures"] = list(seeded)
+                    p["updatedAt"] = _iso()
+                    changed = True
+                elif "marketingFeatures" not in p:
+                    p["marketingFeatures"] = []
+                    changed = True
         if changed:
             save_collection("plans", plans)
 
@@ -1043,6 +1055,29 @@ def _cafe_portal_payload(owner: dict) -> dict:
             "accountEmail": str(owner.get("email") or ""),
         },
     }
+
+
+def _clip_plain(value: object, max_len: int) -> str:
+    text = str(value or "").strip()
+    return text[:max_len]
+
+
+def _landing_contact_limited(ip: str) -> bool:
+    tickets = load_collection("support_tickets", [])
+    if not isinstance(tickets, list):
+        return False
+    cutoff_iso = _iso(_now() - 15 * 60)
+    n = 0
+    for t in tickets:
+        if not isinstance(t, dict):
+            continue
+        if str(t.get("source") or "") != "landing":
+            continue
+        if str(t.get("ip") or "") != str(ip or ""):
+            continue
+        if str(t.get("createdAt") or "") >= cutoff_iso:
+            n += 1
+    return n >= 5
 
 
 def _rate_limited(email: str, ip: str) -> bool:
@@ -1693,6 +1728,70 @@ def handle(
             },
         }
 
+    if route == "sa-public-contact" and method == "POST":
+        honeypot = str(body.get("website") or "").strip()
+        if honeypot:
+            return {"status": 200, "body": {"ok": True}}
+        if _landing_contact_limited(ip):
+            return {"status": 429, "body": {"error": "too_many"}}
+        name = _clip_plain(body.get("name"), 80)
+        phone = _clip_plain(body.get("phone"), 32)
+        email = _clip_plain(body.get("email"), 120).lower()
+        cafe_name = _clip_plain(body.get("cafeName"), 80)
+        message = _clip_plain(body.get("message"), 2000)
+        if len(name) < 2:
+            return {"status": 400, "body": {"error": "missing_name"}}
+        if len(message) < 10:
+            return {"status": 400, "body": {"error": "missing_message"}}
+        phone_digits = re.sub(r"\D+", "", phone)
+        email_ok = bool(email) and re.match(r"^[^@\s]+@[^@\s]+\.[^@\s]+$", email) is not None
+        if len(phone_digits) < 8 and not email_ok:
+            return {"status": 400, "body": {"error": "missing_contact"}}
+        if email and not email_ok:
+            return {"status": 400, "body": {"error": "invalid_email"}}
+        lines = [f"نام: {name}"]
+        if phone:
+            lines.append(f"تلفن: {phone}")
+        if email:
+            lines.append(f"ایمیل: {email}")
+        if cafe_name:
+            lines.append(f"کافه: {cafe_name}")
+        lines.append("")
+        lines.append(message)
+        subject = f"تماس از وب‌سایت — {cafe_name}" if cafe_name else f"تماس از وب‌سایت — {name}"
+        tickets = load_collection("support_tickets", [])
+        if not isinstance(tickets, list):
+            tickets = []
+        now = _iso()
+        ticket = {
+            "id": _new_id("tkt"),
+            "tenantId": None,
+            "cafeName": cafe_name,
+            "cafeOwnerName": name,
+            "cafeOwnerEmail": email if email_ok else "",
+            "cafeOwnerPhone": phone,
+            "source": "landing",
+            "ip": ip,
+            "subject": subject,
+            "priority": "normal",
+            "status": "open",
+            "assignedAdminId": None,
+            "messages": [
+                {
+                    "id": _new_id("msg"),
+                    "from": "cafe",
+                    "body": "\n".join(lines),
+                    "createdAt": now,
+                }
+            ],
+            "createdAt": now,
+            "updatedAt": now,
+            "lastReplyAt": now,
+        }
+        tickets.insert(0, ticket)
+        save_collection("support_tickets", tickets)
+        return {"status": 200, "body": {"ok": True}}
+
     if route == "sa-logout" and method == "POST":
         token = get_token(headers, body)
         admin = session_admin(token)
@@ -1881,9 +1980,11 @@ def handle(
         plan = next((p for p in (plans if isinstance(plans, list) else []) if p.get("id") == plan_id), None)
         if not plan:
             return {"status": 400, "body": {"error": "invalid_plan"}}
-        cycle = str(body.get("billingCycle") or "monthly")
-        if cycle not in ("monthly", "6months", "yearly"):
-            cycle = "monthly"
+        cycle = str(body.get("billingCycle") or "6months")
+        if cycle == "monthly":
+            cycle = "6months"
+        if cycle not in ("6months", "yearly"):
+            cycle = "6months"
         req_type = str(body.get("type") or "purchase")  # purchase | recharge | upgrade
         note = str(body.get("note") or "").strip()
         price = int((plan.get("prices") or {}).get(cycle) or 0)
@@ -2347,7 +2448,8 @@ def handle(
             "description": str(body.get("description") or ""),
             "status": str(body.get("status") or "active"),
             "displayOrder": int(body.get("displayOrder") or len(plans) + 1),
-            "entitlements": body.get("entitlements") or {},
+            "entitlements": normalize_entitlements(body.get("entitlements") or {}, False),
+            "marketingFeatures": normalize_marketing_features(body.get("marketingFeatures") or []),
             "prices": body.get("prices")
             or {"monthly": 0, "6months": 0, "yearly": 0},
             "createdAt": _iso(),
@@ -2376,14 +2478,49 @@ def handle(
             if not has_permission(admin, "plans.write"):
                 return {"status": 403, "body": {"error": "forbidden"}}
             plan = plans[idx]
-            for key in ("name", "description", "status", "displayOrder", "entitlements", "prices"):
+            for key in ("name", "description", "status", "displayOrder", "entitlements", "prices", "marketingFeatures"):
                 if key in body:
                     plan[key] = body[key]
+            if "entitlements" in body:
+                plan["entitlements"] = normalize_entitlements(body.get("entitlements") or {}, False)
+            if "marketingFeatures" in body:
+                plan["marketingFeatures"] = normalize_marketing_features(body.get("marketingFeatures"))
             plan["updatedAt"] = _iso()
             plans[idx] = plan
             save_collection("plans", plans)
             _audit(admin, "edit_plan", "plan", plan["id"], ip)
             return {"status": 200, "body": {"plan": plan}}
+        if method == "DELETE":
+            if not has_permission(admin, "plans.write"):
+                return {"status": 403, "body": {"error": "forbidden"}}
+            subs = load_collection("subscriptions", [])
+            if not isinstance(subs, list):
+                subs = []
+            for s in subs:
+                if isinstance(s, dict) and s.get("planId") == item_id:
+                    return {
+                        "status": 409,
+                        "body": {
+                            "error": "plan_in_use",
+                            "message": "این پلن به اشتراک متصل است. ابتدا وضعیت آن را مخفی کنید یا اشتراک‌ها را تغییر دهید.",
+                        },
+                    }
+            cafes = load_collection("cafes", [])
+            if not isinstance(cafes, list):
+                cafes = []
+            for c in cafes:
+                if isinstance(c, dict) and c.get("planId") == item_id:
+                    return {
+                        "status": 409,
+                        "body": {
+                            "error": "plan_in_use",
+                            "message": "این پلن به کافه متصل است. ابتدا وضعیت آن را مخفی کنید یا پلن کافه را عوض کنید.",
+                        },
+                    }
+            plans.pop(idx)
+            save_collection("plans", plans)
+            _audit(admin, "delete_plan", "plan", item_id, ip)
+            return {"status": 200, "body": {"ok": True, "id": item_id}}
 
     # ── Subscriptions ─────────────────────────────────────
     if route == "sa-subscriptions" and method == "GET":
@@ -2721,7 +2858,7 @@ def handle(
             tickets = []
         tickets = _enrich_support_tickets(tickets)
         return {"status": 200, "body": _filter_page(
-            tickets, qs, ["id", "subject", "tenantId", "status", "priority", "cafeName", "cafeOwnerEmail", "cafeOwnerName"]
+            tickets, qs, ["id", "subject", "tenantId", "status", "priority", "cafeName", "cafeOwnerEmail", "cafeOwnerName", "cafeOwnerPhone", "source"]
         )}
 
     if route == "sa-support" and method == "POST":

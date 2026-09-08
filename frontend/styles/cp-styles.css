@@ -503,10 +503,58 @@
   overflow-y: auto;
 }
 
+.cp-nav-item.is-locked {
+  color: color-mix(in srgb, var(--text) 58%, transparent);
+}
+
+.cp-nav-lock {
+  margin-inline-start: auto;
+  display: inline-grid;
+  place-items: center;
+  opacity: 0.75;
+  flex-shrink: 0;
+}
+
+.cp-app.is-sidebar-collapsed .cp-nav-lock {
+  position: absolute;
+  inset-inline-end: 0.35rem;
+  inset-block-start: 0.35rem;
+  width: 0.85rem;
+  height: 0.85rem;
+}
+
+.cp-upgrade-panel {
+  display: grid;
+  justify-items: start;
+  gap: 0.85rem;
+  max-width: 28rem;
+  margin: 2.5rem auto;
+  padding: 1.4rem 1.5rem;
+  border-radius: 18px;
+  background: color-mix(in srgb, var(--text) 4%, var(--color-surface));
+  border: 1px solid color-mix(in srgb, var(--text) 12%, var(--border));
+}
+
+.cp-upgrade-panel-title {
+  margin: 0;
+  font-size: 1.05rem;
+}
+
+.cp-upgrade-copy {
+  margin: 0.4rem 0 0.9rem;
+  line-height: 1.8;
+  color: color-mix(in srgb, var(--text) 78%, transparent);
+}
+
+.orders-primary-btn.is-locked {
+  opacity: 0.82;
+}
+
 .cp-nav-item {
   display: flex;
   align-items: center;
   gap: 0.7rem;
+  position: relative;
   width: 100%;
   min-height: var(--touch-min);
   padding: 0.55rem 0.7rem;
@@ -3216,6 +3264,18 @@
   margin-bottom: 1rem;
 }
 
+.table-glass-lock-hint {
+  margin: 0 0 0.55rem;
+  padding: 0.55rem 0.7rem;
+  border-radius: 12px;
+  font-size: 0.78rem;
+  font-weight: 600;
+  line-height: 1.55;
+  color: #f0ebe2;
+  background: rgba(201, 162, 39, 0.14);
+  border: 1px solid rgba(201, 162, 39, 0.28);
+}
+
 .table-glass-state-grid {
   display: grid;
   grid-template-columns: repeat(2, 1fr);
@@ -3266,6 +3326,26 @@
 .table-glass-state:disabled {
   opacity: 0.45;
   cursor: not-allowed;
+}
+
+.table-glass-state.is-locked {
+  opacity: 0.72;
+  position: relative;
+}
+
+.table-glass-state.is-locked::after {
+  content: "قفل";
+  position: absolute;
+  top: 0.45rem;
+  left: 0.55rem;
+  font-size: 0.65rem;
+  font-weight: 800;
+  letter-spacing: 0.02em;
+  padding: 0.12rem 0.4rem;
+  border-radius: 999px;
+  background: rgba(201, 162, 39, 0.22);
+  color: #e6c35a;
+  border: 1px solid rgba(201, 162, 39, 0.35);
 }
 
 .table-glass-state-dot {

@@ -166,8 +166,13 @@ export async function apiJson<T = unknown>(
   const res = await fetch(apiUrl(path), { ...init, headers });
   const data = await res.json().catch(() => ({}));
   if (!res.ok) {
-    const err = new Error((data && (data as { error?: string }).error) || "request_failed");
-    (err as Error & { status?: number }).status = res.status;
+    const payload = data as { error?: string; feature?: string };
+    const err = new Error(payload.error || "request_failed") as Error & {
+      status?: number;
+      feature?: string;
+    };
+    err.status = res.status;
+    if (payload.feature) err.feature = payload.feature;
     throw err;
   }
   return data as T;

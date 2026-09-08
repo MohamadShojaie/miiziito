@@ -338,6 +338,7 @@ function orders_live_payload($ordersFile, $tablesFile, $invoicesFile = "") {
         $payload["invoices"] = read_invoices($invoicesFile);
     }
     $payload["since"] = live_stamp($ordersFile, $tablesFile, $invoicesFile);
+    apply_plan_live_filters($payload);
     return $payload;
 }
 
@@ -1005,6 +1006,63 @@ function require_cashier($sessionsFile, $body) {
         send_json(401, array("error" => "auth_required"));
     }
     return $rec["token"];
+}
+
+function current_plan_access() {
+    global $tenantCafe;
+    if (function_exists("lumiere_tenant_plan_access")) {
+        return lumiere_tenant_plan_access(isset($tenantCafe) ? $tenantCafe : null);
+    }
+    $unlocked = array();
+    foreach (array("invoices", "reservations", "coupons", "advancedAnalytics", "paymentTerminal", "crm", "hardware", "kitchenPrint", "tableOps") as $key) {
+        $unlocked[$key] = true;
+    }
+    return array("planId" => "", "planName" => "", "entitlements" => $unlocked);
+}
+
+function require_entitlement($feature) {
+    $feature = (string) $feature;
+    $access = current_plan_access();
+    $ents = (isset($access["entitlements"]) && is_array($access["entitlements"])) ? $access["entitlements"] : array();
+    if (!empty($ents[$feature])) return $access;
+    $label = function_exists("lumiere_entitlement_label") ? lumiere_entitlement_label($feature) : $feature;
+    send_json(403, array(
+        "error" => "upgrade_required",
+        "feature" => $feature,
+        "message" => "قابلیت «" . $label . "» در پلن فعلی فعال نیست. برای استفاده، پلن را ارتقا یا تمدید کنید.",
+        "planId" => isset($access["planId"]) ? $access["planId"] : "",
+        "planName" => isset($access["planName"]) ? $access["planName"] : ""
+    ));
+}
+
+function apply_plan_live_filters(&$payload) {
+    $access = current_plan_access();
+    $ents = (isset($access["entitlements"]) && is_array($access["entitlements"])) ? $access["entitlements"] : array();
+    if (empty($ents["invoices"])) {
+        unset($payload["invoices"]);
+        unset($payload["summary"]);
+    }
+    if (empty($ents["reservations"])) {
+        $payload["reservations"] = array();
+    }
+    return $payload;
+}
+
+function require_printer_action_entitlement($hardwareFile, $body, $action) {
+    $action = (string) $action;
+    if ($action === "capabilities") return;
+    if ($action === "print") {
+        $devices = read_hardware($hardwareFile);
+        $printer = find_printer_for_request($devices, $body);
+        $type = is_array($printer) && isset($printer["type"]) ? (string) $printer["type"] : "";
+        if ($type === "kitchen_printer" || $type === "bar_printer") {
+            require_entitlement("kitchenPrint");
+        } else {
+            require_entitlement("invoices");
+        }
+        return;
+    }
+    require_entitlement("hardware");
 }
 
 function sanitize_items($items) {
@@ -2718,6 +2776,7 @@ if ($body === null) {
 }
 
 $tenantSlug = lumiere_tenant_request_slug($body);
+$tenantCafe = null;
 if ($tenantSlug !== "") {
     lumiere_tenant_ensure_slugs();
     $tenantCafe = lumiere_tenant_find_by_slug($tenantSlug);
@@ -3162,6 +3221,7 @@ if ($route === "menu" && $method === "POST") {
 
 if ($route === "stats" && $method === "GET") {
     require_cashier($sessionsFile, $body);
+    require_entitlement("advancedAnalytics");
     $orderStats = compute_stats(read_orders($ordersFile));
     $invoiceStats = compute_invoice_stats(read_invoices($invoicesFile));
     send_json(200, array(
@@ -3177,7 +3237,7 @@ if ($route === "stats" && $method === "GET") {
 
 if ($route === "settings" && $method === "GET") {
     $settings = read_site_settings($settingsFile);
-    $payload = array("settings" => $settings);
+    $payload = array("settings" => $settings, "access" => current_plan_access());
     if ($session) {
         $payload["summary"] = compute_settings_summary(
             read_orders($ordersFile),
@@ -3207,12 +3267,14 @@ if ($route === "settings" && $method === "POST") {
 
 if ($route === "customers" && $method === "GET") {
     require_cashier($sessionsFile, $body);
+    require_entitlement("crm");
     $customers = visible_customers(read_customers($customersFile));
     send_json(200, array("customers" => $customers));
 }
 
 if ($route === "customers" && $method === "POST") {
     require_cashier($sessionsFile, $body);
+    require_entitlement("crm");
     $customers = read_customers($customersFile);
     $action = isset($body["action"]) ? (string) $body["action"] : "add";
 
@@ -3298,11 +3360,13 @@ if ($route === "customers" && $method === "POST") {
 
 if ($route === "coupons" && $method === "GET") {
     require_cashier($sessionsFile, $body);
+    require_entitlement("coupons");
     send_json(200, array("coupons" => sort_coupons(read_coupons($couponsFile))));
 }
 
 if ($route === "coupons" && $method === "POST") {
     require_cashier($sessionsFile, $body);
+    require_entitlement("coupons");
     $coupons = read_coupons($couponsFile);
     $action = isset($body["action"]) ? (string) $body["action"] : "add";
 
@@ -3396,11 +3460,13 @@ if ($route === "coupons" && $method === "POST") {
 
 if ($route === "hardware" && $method === "GET") {
     require_cashier($sessionsFile, $body);
+    require_entitlement("hardware");
     send_json(200, array("devices" => sort_hardware(read_hardware($hardwareFile))));
 }
 
 if ($route === "hardware" && $method === "POST") {
     require_cashier($sessionsFile, $body);
+    require_entitlement("hardware");
     $devices = read_hardware($hardwareFile);
     $action = isset($body["action"]) ? (string) $body["action"] : "add";
 
@@ -3543,6 +3609,7 @@ if ($route === "printers" && $method === "GET") {
 if ($route === "printers" && $method === "POST") {
     require_cashier($sessionsFile, $body);
     $action = isset($body["action"]) ? (string) $body["action"] : "discover";
+    require_printer_action_entitlement($hardwareFile, $body, $action);
     $devices = read_hardware($hardwareFile);
 
     if ($action === "capabilities") {
@@ -3695,6 +3762,7 @@ if ($route === "tables" && $method === "POST") {
     if (!is_known_table($layout, $table)) {
         send_json(400, array("error" => "table_unknown"));
     }
+    require_entitlement("tableOps");
     $state = isset($body["state"]) ? (string) $body["state"] : "";
     if ($state !== "open" && $state !== "full" && $state !== "disabled" && $state !== "reserved") {
         send_json(400, array("error" => "invalid_state"));
@@ -3719,11 +3787,13 @@ if ($route === "tables" && $method === "POST") {
 
 if ($route === "reservations" && $method === "GET") {
     require_cashier($sessionsFile, $body);
+    require_entitlement("reservations");
     $resFile = reservations_path_for($tablesFile);
     send_json(200, reservations_payload($resFile, $tablesFile));
 }
 
 if ($route === "reservations" && $method === "POST") {
+    require_entitlement("reservations");
     $resFile = reservations_path_for($tablesFile);
     $action = isset($body["action"]) ? (string) $body["action"] : "";
     $now = now_ms();
@@ -3870,6 +3940,7 @@ if ($route === "orders" && $method === "GET") {
         $payload["invoices"] = read_invoices($invoicesFile);
         $payload["summary"] = invoice_summary_cards($payload["invoices"]);
     }
+    apply_plan_live_filters($payload);
     send_json(200, $payload);
 }
 
@@ -4200,6 +4271,7 @@ if ($route === "item" && $id !== "") {
 
 if ($route === "invoices" && $method === "GET") {
     require_cashier($sessionsFile, $body);
+    require_entitlement("invoices");
     $invoices = read_invoices($invoicesFile);
     send_json(200, array(
         "invoices" => $invoices,
@@ -4209,6 +4281,7 @@ if ($route === "invoices" && $method === "GET") {
 
 if ($route === "invoices" && $method === "POST") {
     require_cashier($sessionsFile, $body);
+    require_entitlement("invoices");
     $orderId = isset($body["orderId"]) ? (string) $body["orderId"] : "";
     if ($orderId === "") send_json(400, array("error" => "order_required"));
     $orders = read_orders($ordersFile);
@@ -4484,6 +4557,7 @@ if ($route === "invoices" && $method === "POST") {
 
 if ($route === "invoice-item" && $id !== "") {
     require_cashier($sessionsFile, $body);
+    require_entitlement("invoices");
     if ($method !== "PATCH" && $method !== "POST") send_json(405, array("error" => "method"));
     $invoices = read_invoices($invoicesFile);
     $found = null;
@@ -4580,11 +4654,13 @@ if ($route === "invoice-item" && $id !== "") {
 // ── Payment terminals ───────────────────────────────────────────────
 if ($route === "payment-terminals" && $method === "GET") {
     require_cashier($sessionsFile, $body);
+    require_entitlement("paymentTerminal");
     send_json(200, array("terminals" => payment_sort_terminals(payment_read_list($paymentTerminalsFile))));
 }
 
 if ($route === "payment-terminals" && $method === "POST") {
     require_cashier($sessionsFile, $body);
+    require_entitlement("paymentTerminal");
     $terminals = payment_read_list($paymentTerminalsFile);
     $action = isset($body["action"]) ? (string) $body["action"] : "add";
 
@@ -4657,6 +4733,7 @@ if ($route === "payment-terminals" && $method === "POST") {
 
 if ($route === "payment-agent" && $method === "POST") {
     require_cashier($sessionsFile, $body);
+    require_entitlement("paymentTerminal");
     $action = isset($body["action"]) ? (string) $body["action"] : "health";
     if ($action === "health") {
         $agent = payment_call_agent("health", array());
@@ -4697,6 +4774,7 @@ if ($route === "payment-agent" && $method === "POST") {
 
 if ($route === "payment-item" && $method === "GET") {
     require_cashier($sessionsFile, $body);
+    require_entitlement("paymentTerminal");
     $id = trim((string) $id);
     $payments = payment_read_list($paymentsFile);
     $idx = payment_find_index($payments, $id);
@@ -4706,6 +4784,7 @@ if ($route === "payment-item" && $method === "GET") {
 
 if ($route === "payments" && $method === "GET") {
     require_cashier($sessionsFile, $body);
+    require_entitlement("paymentTerminal");
     $payments = array();
     foreach (payment_read_list($paymentsFile) as $row) {
         if (is_array($row)) $payments[] = payment_normalize_payment($row);
@@ -4718,6 +4797,7 @@ if ($route === "payments" && $method === "GET") {
 
 if ($route === "payments" && $method === "POST") {
     require_cashier($sessionsFile, $body);
+    require_entitlement("paymentTerminal");
     $action = isset($body["action"]) ? (string) $body["action"] : "sale";
     $payments = payment_read_list($paymentsFile);
     $terminals = payment_read_list($paymentTerminalsFile);
