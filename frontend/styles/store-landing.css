@@ -1890,6 +1890,16 @@ a.mzt-plan-cta.mzt-btn-secondary:hover {
   color: var(--text-dark);
 }
 
+.mzt-contact-card .mzt-h3,
+.mzt-contact-card .mzt-body,
+.mzt-contact-card .mzt-body-sm {
+  color: var(--text-dark);
+}
+
+.mzt-contact-card .mzt-body-sm {
+  color: var(--text-dark-secondary);
+}
+
 .mzt-contact-form {
   display: flex;
   flex-direction: column;
@@ -1976,6 +1986,7 @@ a.mzt-plan-cta.mzt-btn-secondary:hover {
 .mzt-contact-success {
   text-align: center;
   padding: 36px 12px;
+  color: var(--text-dark);
 }
 
 .mzt-contact-success-mark {
@@ -1991,6 +2002,11 @@ a.mzt-plan-cta.mzt-btn-secondary:hover {
 
 .mzt-contact-success .mzt-h3 {
   margin: 0 0 8px;
+  color: var(--text-dark);
+}
+
+.mzt-contact-success .mzt-body-sm {
+  color: var(--text-dark-secondary);
 }
 
 .mzt-cta-card {
