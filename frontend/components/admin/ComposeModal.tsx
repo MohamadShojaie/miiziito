@@ -11,7 +11,7 @@ import type {
   Topping,
 } from "@/lib/types";
 import { tablesFromRegions } from "@/lib/types";
-import { formatPriceAsNumber, parsePrice, toPersianDigits } from "@/lib/format";
+import { formatPriceAsNumber, parsePrice, toPersianDigits, TAKEAWAY_TABLE } from "@/lib/format";
 import { apiJson, cashierHeaders } from "@/lib/api";
 import {
   buildCustomerCategories,
@@ -109,6 +109,7 @@ export function ComposeModal({
   onDone: (data: unknown) => void;
 }) {
   const { showToast } = useToast();
+  const [channel, setChannel] = useState<"table" | "takeaway">("table");
   const [table, setTable] = useState("");
   const [q, setQ] = useState("");
   const [activeCi, setActiveCi] = useState<number | null>(null);
@@ -153,6 +154,7 @@ export function ComposeModal({
     if (seededFor.current === seedId) return;
     seededFor.current = seedId;
     if (order) {
+      setChannel(order.type === "takeaway" ? "takeaway" : "table");
       setTable(String(order.table || ""));
       setCart(linesFromItems(order.items));
       setCustomer(
@@ -165,6 +167,7 @@ export function ComposeModal({
           : null
       );
     } else {
+      setChannel("table");
       setTable("");
       setCart([]);
       setCustomer(null);
@@ -270,7 +273,7 @@ export function ComposeModal({
   }
 
   async function submit() {
-    if (!order && !table) {
+    if (!order && channel === "table" && !table) {
       showToast("میز را انتخاب کنید");
       return;
     }
@@ -308,18 +311,19 @@ export function ComposeModal({
         });
         showToast("سفارش ویرایش شد");
       } else {
+        const takeaway = channel === "takeaway";
         data = await apiJson("/api/orders", {
           method: "POST",
           headers: cashierHeaders(),
           body: JSON.stringify({
-            type: "food",
-            table,
+            type: takeaway ? "takeaway" : "food",
+            table: takeaway ? TAKEAWAY_TABLE : table,
             items,
             total,
             ...customerPayload,
           }),
         });
-        showToast("سفارش ثبت شد");
+        showToast(takeaway ? "سفارش بیرون‌بر ثبت شد" : "سفارش ثبت شد");
       }
       onDone(data);
       onClose();
@@ -355,8 +359,12 @@ export function ComposeModal({
             </h4>
             <p className="table-glass-sub">
               {order
-                ? `میز ${toPersianDigits(String(order.table))}`
-                : "میز را انتخاب کنید و آیتم‌ها را اضافه کنید"}
+                ? order.type === "takeaway"
+                  ? "بیرون‌بر"
+                  : `میز ${toPersianDigits(String(order.table))}`
+                : channel === "takeaway"
+                  ? "سفارش بیرون‌بر — بدون میز"
+                  : "میز را انتخاب کنید و آیتم‌ها را اضافه کنید"}
             </p>
           </div>
           <button
@@ -374,23 +382,59 @@ export function ComposeModal({
           <div className="compose-glass-main">
             {!order ? (
               <section className="compose-glass-section">
-                <span className="table-glass-label">میز</span>
-                <div className="compose-glass-tables">
-                  {allTables.map((n) => {
-                    const disabled = tables[String(n)] === "disabled";
-                    return (
-                      <button
-                        key={n}
-                        type="button"
-                        className={`compose-glass-table${table === String(n) ? " is-active" : ""}${disabled ? " is-disabled" : ""}`}
-                        disabled={disabled || busy}
-                        onClick={() => setTable(String(n))}
-                      >
-                        {toPersianDigits(n)}
-                      </button>
-                    );
-                  })}
+                <span className="table-glass-label">نوع سفارش</span>
+                <div className="compose-channel-toggle" role="tablist" aria-label="نوع سفارش">
+                  <button
+                    type="button"
+                    role="tab"
+                    aria-selected={channel === "table"}
+                    className={`compose-channel-btn${channel === "table" ? " is-active" : ""}`}
+                    disabled={busy}
+                    onClick={() => {
+                      setChannel("table");
+                    }}
+                  >
+                    سر میز
+                  </button>
+                  <button
+                    type="button"
+                    role="tab"
+                    aria-selected={channel === "takeaway"}
+                    className={`compose-channel-btn${channel === "takeaway" ? " is-active" : ""}`}
+                    disabled={busy}
+                    onClick={() => {
+                      setChannel("takeaway");
+                      setTable("");
+                    }}
+                  >
+                    بیرون‌بر
+                  </button>
                 </div>
+                {channel === "table" ? (
+                  <>
+                    <span className="table-glass-label">میز</span>
+                    <div className="compose-glass-tables">
+                      {allTables.map((n) => {
+                        const disabled = tables[String(n)] === "disabled";
+                        return (
+                          <button
+                            key={n}
+                            type="button"
+                            className={`compose-glass-table${table === String(n) ? " is-active" : ""}${disabled ? " is-disabled" : ""}`}
+                            disabled={disabled || busy}
+                            onClick={() => setTable(String(n))}
+                          >
+                            {toPersianDigits(n)}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </>
+                ) : (
+                  <p className="compose-takeaway-hint">
+                    این سفارش بدون اشغال میز ثبت می‌شود و در لیست سفارش‌ها با برچسب بیرون‌بر دیده می‌شود.
+                  </p>
+                )}
               </section>
             ) : null}
 

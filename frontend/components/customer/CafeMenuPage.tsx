@@ -43,7 +43,7 @@ export function CafeMenuPage() {
     return (
       <div className="sa-login" style={{ minHeight: "60vh", display: "grid", placeItems: "center" }}>
         <p style={{ color: "var(--sa-text-muted, #666)" }}>آدرس منو نامعتبر است.</p>
-        <Link href="/">بازگشت به میزییتو</Link>
+        <Link href="/">بازگشت به میزیتو</Link>
       </div>
     );
   }

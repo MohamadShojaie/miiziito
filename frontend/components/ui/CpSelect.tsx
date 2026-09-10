@@ -55,17 +55,24 @@ export function CpSelect({
       const rtl = document.documentElement.dir === "rtl";
       let left = rtl ? r.right - width : r.left;
       left = Math.max(8, Math.min(left, window.innerWidth - width - 8));
-      const maxH = 240;
-      const below = r.bottom + 6;
-      const top =
-        below + maxH > window.innerHeight - 8
-          ? Math.max(8, r.top - maxH - 6)
-          : below;
+      const gap = 6;
+      const pad = 8;
+      const spaceBelow = window.innerHeight - r.bottom - gap - pad;
+      const spaceAbove = r.top - gap - pad;
+      const preferBelow = spaceBelow >= Math.min(180, spaceAbove);
+      const available = preferBelow ? spaceBelow : spaceAbove;
+      const maxH = Math.max(120, Math.min(280, available));
+      const top = preferBelow
+        ? r.bottom + gap
+        : Math.max(pad, r.top - gap - maxH);
       setMenuStyle({
         position: "fixed",
         top,
         left,
         width,
+        maxHeight: maxH,
+        overflowY: "auto",
+        WebkitOverflowScrolling: "touch",
         zIndex: 580,
       });
     }
@@ -76,7 +83,7 @@ export function CpSelect({
       window.removeEventListener("resize", place);
       window.removeEventListener("scroll", place, true);
     };
-  }, [open]);
+  }, [open, options.length]);
 
   return (
     <div

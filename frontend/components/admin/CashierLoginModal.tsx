@@ -63,11 +63,25 @@ export function CashierLoginModal({
       <div className="modal-card cp-modal cashier-login-modal" role="dialog" aria-labelledby="cashier-login-title">
         {onClose ? (
           <button type="button" className="modal-close" aria-label="بستن" onClick={onClose}>
-            ×
+            <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+              <path
+                d="M4 4l8 8M12 4l-8 8"
+                stroke="currentColor"
+                strokeWidth="1.8"
+                strokeLinecap="round"
+              />
+            </svg>
           </button>
         ) : closeHref ? (
           <Link href={closeHref} className="modal-close" aria-label="بستن">
-            ×
+            <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+              <path
+                d="M4 4l8 8M12 4l-8 8"
+                stroke="currentColor"
+                strokeWidth="1.8"
+                strokeLinecap="round"
+              />
+            </svg>
           </Link>
         ) : null}
         <h2 id="cashier-login-title" className="modal-title">

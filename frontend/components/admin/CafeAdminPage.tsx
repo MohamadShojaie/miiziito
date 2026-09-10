@@ -23,7 +23,7 @@ export function CafeAdminPage() {
           <h2 className="modal-title">پنل کافه یافت نشد</h2>
           <p className="modal-hint">آدرس باید به شکل miiziito.ir/نام-کافه/admin باشد.</p>
           <Link href="/" className="modal-submit cp-btn cp-btn--primary cp-btn--block">
-            بازگشت به میزییتو
+            بازگشت به میزیتو
           </Link>
         </div>
       </div>

@@ -319,6 +319,20 @@ export function IconQr(props: IconProps) {
   );
 }
 
+export function IconCosting(props: IconProps) {
+  return (
+    <Svg {...props}>
+      <path
+        d="M4 19V5M4 19h16M8 15V9M12 15v-3M16 15V7"
+        stroke="currentColor"
+        strokeWidth="1.8"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </Svg>
+  );
+}
+
 export const TAB_ICONS = {
   orders: IconOrders,
   invoices: IconInvoices,
@@ -328,6 +342,7 @@ export const TAB_ICONS = {
   stats: IconStats,
   customers: IconCrm,
   coupons: IconCoupons,
+  costing: IconCosting,
   hardware: IconHardware,
   payments: IconPayments,
   settings: IconSettings,

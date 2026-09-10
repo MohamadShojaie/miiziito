@@ -2,6 +2,8 @@ import type { Metadata } from "next";
 import { Cormorant_Garamond } from "next/font/google";
 import { Providers } from "@/components/Providers";
 import { PLATFORM_BRAND } from "@/lib/brand";
+import { LANDING_DESCRIPTION } from "@/lib/landing-seo";
+import { absoluteUrl, siteOrigin } from "@/lib/site-url";
 import "./globals.css";
 
 const cormorant = Cormorant_Garamond({
@@ -11,8 +13,13 @@ const cormorant = Cormorant_Garamond({
 });
 
 export const metadata: Metadata = {
-  title: PLATFORM_BRAND.title,
-  description: "پلتفرم منوی دیجیتال و مدیریت کافه و رستوران",
+  metadataBase: new URL(`${siteOrigin()}/`),
+  title: {
+    default: PLATFORM_BRAND.title,
+    template: `%s | ${PLATFORM_BRAND.nameFa}`,
+  },
+  description: LANDING_DESCRIPTION,
+  applicationName: PLATFORM_BRAND.nameFa,
   icons: {
     icon: [
       { url: "/favicon.png", type: "image/png" },
@@ -20,6 +27,21 @@ export const metadata: Metadata = {
       { url: PLATFORM_BRAND.markSvg, type: "image/svg+xml" },
     ],
     apple: [{ url: "/apple-icon.png", sizes: "180x180", type: "image/png" }],
+  },
+  openGraph: {
+    type: "website",
+    locale: "fa_IR",
+    siteName: PLATFORM_BRAND.nameFa,
+    title: PLATFORM_BRAND.title,
+    description: LANDING_DESCRIPTION,
+    url: absoluteUrl("/"),
+    images: [{ url: "/og.png", width: 1200, height: 630, alt: PLATFORM_BRAND.title }],
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: PLATFORM_BRAND.title,
+    description: LANDING_DESCRIPTION,
+    images: ["/og.png"],
   },
 };
 

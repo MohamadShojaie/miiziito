@@ -1,1 +1,14 @@
-{"regions":[],"states":{}}
+{
+  "regions": [
+    {
+      "id": "q",
+      "name": "q",
+      "tables": [
+        1
+      ]
+    }
+  ],
+  "states": {
+    "1": "full"
+  }
+}

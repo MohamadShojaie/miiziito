@@ -174,6 +174,7 @@ function lumiere_tenant_provision($cafe) {
         "customers.json" => "[]",
         "reservations.json" => "[]",
         "sessions.json" => "{}",
+        "costing.json" => '{"settings":{"profitPercent":40,"monthlyPortions":1000},"ingredients":[],"bills":[],"employees":[],"recipes":[]}',
     );
     foreach ($live as $file => $fallback) {
         $path = $dir . "/" . $file;
@@ -352,6 +353,7 @@ function lumiere_entitlement_flag_keys() {
         "hardware",
         "kitchenPrint",
         "tableOps",
+        "menuCosting",
     );
 }
 
@@ -366,6 +368,7 @@ function lumiere_entitlement_label($feature) {
         "hardware" => "سخت‌افزار و پرینتر",
         "kitchenPrint" => "چاپ تیکت آشپزخانه و بار",
         "tableOps" => "وضعیت میز و سفارش از نقشه میزها",
+        "menuCosting" => "هزینه‌یابی منو",
     );
     $feature = (string) $feature;
     return isset($labels[$feature]) ? $labels[$feature] : $feature;
@@ -392,7 +395,7 @@ function lumiere_default_plan_entitlements($tier) {
         }
     }
     if ($tier === "business") {
-        foreach (array("crm", "hardware", "kitchenPrint") as $key) {
+        foreach (array("crm", "hardware", "kitchenPrint", "menuCosting") as $key) {
             $ent[$key] = true;
         }
     }

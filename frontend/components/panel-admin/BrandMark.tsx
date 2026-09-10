@@ -22,7 +22,7 @@ export function BrandMark({
       />
       {showWordmark ? (
         <span className="mzt-brand-mark-text" aria-label={PLATFORM_BRAND.nameFa}>
-          میزی<span>یتو</span>
+          میز<span>یتو</span>
         </span>
       ) : (
         <span className="sr-only">{PLATFORM_BRAND.nameFa}</span>

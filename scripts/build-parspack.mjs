@@ -40,6 +40,7 @@ let htaccess = readFileSync(htaccessSrc, "utf8");
 htaccess = htaccess.replace(/^\s*SetEnv\s+MIIZIITO_DATABASE_URL.*$/gm, "");
 writeFileSync(join(deploy, ".htaccess"), htaccess, "utf8");
 cpSync(join(root, "robots.txt"), join(deploy, "robots.txt"));
+cpSync(join(frontend, "public", "sitemap.xml"), join(deploy, "sitemap.xml"));
 cpSync(out, deploy, { recursive: true });
 
 const dbLocal = join(deploy, "data", "db.local.php");

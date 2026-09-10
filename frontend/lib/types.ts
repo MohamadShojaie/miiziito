@@ -50,7 +50,7 @@ export type OrderItem = {
 
 export type Order = {
   id: string;
-  type?: "food" | "waiter";
+  type?: "food" | "waiter" | "takeaway";
   table: string | number;
   status: OrderStatus;
   items?: OrderItem[];

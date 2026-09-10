@@ -39,6 +39,7 @@ INVOICES = DATA / "invoices.json"
 SETTINGS = DATA / "settings.json"
 CUSTOMERS = DATA / "customers.json"
 COUPONS = DATA / "coupons.json"
+COSTING = DATA / "costing.json"
 HARDWARE = DATA / "hardware.json"
 RESERVATIONS = DATA / "reservations.json"
 PAYMENT_TERMINALS = DATA / "payment_terminals.json"
@@ -69,6 +70,7 @@ _SANDBOX_FILENAMES = {
 _TENANT_FILENAMES = _SANDBOX_FILENAMES | {
     "settings.json",
     "sessions.json",
+    "costing.json",
 }
 
 try:
@@ -196,6 +198,7 @@ def ensure_files() -> None:
         (SETTINGS, "{}"),
         (CUSTOMERS, "[]"),
         (COUPONS, "[]"),
+        (COSTING, '{"settings":{"profitPercent":40,"monthlyPortions":1000},"ingredients":[],"bills":[],"employees":[],"recipes":[]}'),
         (HARDWARE, "[]"),
         (RESERVATIONS, "[]"),
         (PAYMENT_TERMINALS, "[]"),
@@ -1679,6 +1682,178 @@ def read_coupons() -> list:
 
 def write_coupons(coupons: list) -> None:
     write_json(COUPONS, coupons if isinstance(coupons, list) else [])
+
+
+def default_costing_data() -> dict:
+    return {
+        "settings": {"profitPercent": 40, "monthlyPortions": 1000},
+        "ingredients": [],
+        "bills": [],
+        "employees": [],
+        "recipes": [],
+    }
+
+
+def new_costing_id(prefix: str) -> str:
+    return f"{prefix}{secrets.token_hex(6)}"
+
+
+def normalize_costing_unit(raw) -> str:
+    unit = str(raw or "").strip().lower()
+    return unit if unit in ("g", "kg", "ml", "l", "pcs") else "pcs"
+
+
+def normalize_costing_settings(raw) -> dict:
+    src = raw if isinstance(raw, dict) else {}
+    try:
+        profit = float(src.get("profitPercent", 40))
+    except (TypeError, ValueError):
+        profit = 40.0
+    profit = max(0.0, min(1000.0, profit))
+    try:
+        portions = float(src.get("monthlyPortions", 1000))
+    except (TypeError, ValueError):
+        portions = 1000.0
+    portions = max(1.0, portions)
+    return {"profitPercent": profit, "monthlyPortions": portions}
+
+
+def normalize_costing_ingredient(raw, fallback_id: str = "") -> dict:
+    src = raw if isinstance(raw, dict) else {}
+    cid = str(src.get("id") or fallback_id or new_costing_id("ing_")).strip()
+    try:
+        unit_price = max(0.0, float(src.get("unitPrice") or 0))
+    except (TypeError, ValueError):
+        unit_price = 0.0
+    return {
+        "id": cid,
+        "name": str(src.get("name") or "")[:120].strip(),
+        "unit": normalize_costing_unit(src.get("unit")),
+        "unitPrice": unit_price,
+    }
+
+
+def normalize_costing_bill(raw, fallback_id: str = "") -> dict:
+    src = raw if isinstance(raw, dict) else {}
+    cid = str(src.get("id") or fallback_id or new_costing_id("bill_")).strip()
+    try:
+        amount = max(0.0, float(src.get("monthlyAmount") or 0))
+    except (TypeError, ValueError):
+        amount = 0.0
+    return {
+        "id": cid,
+        "name": str(src.get("name") or "")[:120].strip(),
+        "monthlyAmount": amount,
+    }
+
+
+def normalize_costing_employee(raw, fallback_id: str = "") -> dict:
+    src = raw if isinstance(raw, dict) else {}
+    cid = str(src.get("id") or fallback_id or new_costing_id("emp_")).strip()
+    try:
+        salary = max(0.0, float(src.get("salary") or 0))
+    except (TypeError, ValueError):
+        salary = 0.0
+    return {
+        "id": cid,
+        "name": str(src.get("name") or "")[:120].strip(),
+        "role": str(src.get("role") or "")[:80].strip(),
+        "salary": salary,
+    }
+
+
+def normalize_costing_recipe_lines(raw) -> list:
+    out = []
+    if not isinstance(raw, list):
+        return out
+    for line in raw:
+        if not isinstance(line, dict):
+            continue
+        iid = str(line.get("ingredientId") or "").strip()
+        if not iid:
+            continue
+        try:
+            qty = max(0.0, float(line.get("qty") or 0))
+        except (TypeError, ValueError):
+            qty = 0.0
+        out.append(
+            {
+                "ingredientId": iid,
+                "qty": qty,
+                "unit": normalize_costing_unit(line.get("unit") or "pcs"),
+            }
+        )
+    return out
+
+
+def normalize_costing_recipe(raw, fallback_id: str = "") -> dict:
+    src = raw if isinstance(raw, dict) else {}
+    cid = str(src.get("id") or fallback_id or new_costing_id("rcp_")).strip()
+    return {
+        "id": cid,
+        "menuItemKey": str(src.get("menuItemKey") or "")[:80].strip(),
+        "lines": normalize_costing_recipe_lines(src.get("lines")),
+    }
+
+
+def normalize_costing_data(raw) -> dict:
+    base = default_costing_data()
+    if not isinstance(raw, dict):
+        return base
+    base["settings"] = normalize_costing_settings(raw.get("settings"))
+    ingredients = []
+    for row in raw.get("ingredients") or []:
+        item = normalize_costing_ingredient(row)
+        if item["name"]:
+            ingredients.append(item)
+    bills = []
+    for row in raw.get("bills") or []:
+        item = normalize_costing_bill(row)
+        if item["name"]:
+            bills.append(item)
+    employees = []
+    for row in raw.get("employees") or []:
+        item = normalize_costing_employee(row)
+        if item["name"]:
+            employees.append(item)
+    recipes = []
+    for row in raw.get("recipes") or []:
+        item = normalize_costing_recipe(row)
+        if item["menuItemKey"]:
+            recipes.append(item)
+    base["ingredients"] = ingredients
+    base["bills"] = bills
+    base["employees"] = employees
+    base["recipes"] = recipes
+    return base
+
+
+def read_costing() -> dict:
+    return normalize_costing_data(read_json(COSTING, default_costing_data()))
+
+
+def write_costing(data: dict) -> None:
+    write_json(COSTING, normalize_costing_data(data))
+
+
+def find_costing_list_index(rows: list, cid: str) -> int:
+    cid = str(cid or "").strip()
+    if not cid:
+        return -1
+    for i, row in enumerate(rows):
+        if isinstance(row, dict) and str(row.get("id") or "") == cid:
+            return i
+    return -1
+
+
+def find_costing_recipe_by_menu_key(recipes: list, menu_item_key: str) -> int:
+    key = str(menu_item_key or "").strip()
+    if not key:
+        return -1
+    for i, row in enumerate(recipes):
+        if isinstance(row, dict) and str(row.get("menuItemKey") or "") == key:
+            return i
+    return -1
 
 
 def new_coupon_id() -> str:
@@ -3232,6 +3407,178 @@ class Handler(BaseHTTPRequestHandler):
 
             return self._json(400, {"error": "invalid_action"})
 
+        if route == "costing" and method == "GET":
+            if not session:
+                return self._json(401, {"error": "auth_required"})
+            if not self.require_entitlement("menuCosting"):
+                return
+            return self._json(200, {"costing": read_costing()})
+
+        if route == "costing" and method == "POST":
+            if not session:
+                return self._json(401, {"error": "auth_required"})
+            if not self.require_entitlement("menuCosting"):
+                return
+            costing = read_costing()
+            action = str(body.get("action") or "")
+
+            if action == "saveSettings":
+                settings_src = body.get("settings") if isinstance(body.get("settings"), dict) else body
+                costing["settings"] = normalize_costing_settings(settings_src)
+                write_costing(costing)
+                return self._json(200, {"ok": True, "costing": read_costing()})
+
+            if action == "upsertIngredient":
+                record = normalize_costing_ingredient(body, str(body.get("id") or ""))
+                if not record["name"]:
+                    return self._json(400, {"error": "name_required"})
+                idx = find_costing_list_index(costing["ingredients"], record["id"])
+                if idx < 0:
+                    costing["ingredients"].append(record)
+                else:
+                    costing["ingredients"][idx] = record
+                write_costing(costing)
+                return self._json(
+                    200,
+                    {"ok": True, "ingredient": record, "costing": read_costing()},
+                )
+
+            if action == "removeIngredient":
+                rid = str(body.get("id") or "").strip()
+                if not rid:
+                    return self._json(400, {"error": "id_required"})
+                idx = find_costing_list_index(costing["ingredients"], rid)
+                if idx < 0:
+                    return self._json(404, {"error": "not_found"})
+                costing["ingredients"].pop(idx)
+                for recipe in costing["recipes"]:
+                    if not isinstance(recipe, dict):
+                        continue
+                    lines = recipe.get("lines") or []
+                    recipe["lines"] = [
+                        line
+                        for line in lines
+                        if isinstance(line, dict)
+                        and str(line.get("ingredientId") or "") != rid
+                    ]
+                write_costing(costing)
+                return self._json(200, {"ok": True, "id": rid, "costing": read_costing()})
+
+            if action == "upsertBill":
+                record = normalize_costing_bill(body, str(body.get("id") or ""))
+                if not record["name"]:
+                    return self._json(400, {"error": "name_required"})
+                idx = find_costing_list_index(costing["bills"], record["id"])
+                if idx < 0:
+                    costing["bills"].append(record)
+                else:
+                    costing["bills"][idx] = record
+                write_costing(costing)
+                return self._json(
+                    200, {"ok": True, "bill": record, "costing": read_costing()}
+                )
+
+            if action == "removeBill":
+                rid = str(body.get("id") or "").strip()
+                if not rid:
+                    return self._json(400, {"error": "id_required"})
+                idx = find_costing_list_index(costing["bills"], rid)
+                if idx < 0:
+                    return self._json(404, {"error": "not_found"})
+                costing["bills"].pop(idx)
+                write_costing(costing)
+                return self._json(200, {"ok": True, "id": rid, "costing": read_costing()})
+
+            if action == "upsertEmployee":
+                record = normalize_costing_employee(body, str(body.get("id") or ""))
+                if not record["name"]:
+                    return self._json(400, {"error": "name_required"})
+                idx = find_costing_list_index(costing["employees"], record["id"])
+                if idx < 0:
+                    costing["employees"].append(record)
+                else:
+                    costing["employees"][idx] = record
+                write_costing(costing)
+                return self._json(
+                    200,
+                    {"ok": True, "employee": record, "costing": read_costing()},
+                )
+
+            if action == "removeEmployee":
+                rid = str(body.get("id") or "").strip()
+                if not rid:
+                    return self._json(400, {"error": "id_required"})
+                idx = find_costing_list_index(costing["employees"], rid)
+                if idx < 0:
+                    return self._json(404, {"error": "not_found"})
+                costing["employees"].pop(idx)
+                write_costing(costing)
+                return self._json(200, {"ok": True, "id": rid, "costing": read_costing()})
+
+            if action == "upsertRecipe":
+                record = normalize_costing_recipe(body, str(body.get("id") or ""))
+                if not record["menuItemKey"]:
+                    return self._json(400, {"error": "menu_item_required"})
+                known = {
+                    str(ing.get("id") or ""): ing
+                    for ing in costing["ingredients"]
+                    if isinstance(ing, dict) and ing.get("id")
+                }
+                fixed_lines = []
+                for line in record["lines"]:
+                    iid = str(line.get("ingredientId") or "")
+                    ing = known.get(iid)
+                    if not ing:
+                        continue
+                    ing_unit = normalize_costing_unit(ing.get("unit") or "pcs")
+                    use_unit = normalize_costing_unit(line.get("unit") or ing_unit)
+                    mass = {"g", "kg"}
+                    vol = {"ml", "l"}
+                    compatible = (
+                        use_unit == ing_unit
+                        or (use_unit in mass and ing_unit in mass)
+                        or (use_unit in vol and ing_unit in vol)
+                    )
+                    if not compatible:
+                        use_unit = ing_unit
+                    fixed_lines.append(
+                        {
+                            "ingredientId": iid,
+                            "qty": float(line.get("qty") or 0),
+                            "unit": use_unit,
+                        }
+                    )
+                record["lines"] = fixed_lines
+                idx = find_costing_list_index(costing["recipes"], record["id"])
+                if idx < 0:
+                    by_key = find_costing_recipe_by_menu_key(
+                        costing["recipes"], record["menuItemKey"]
+                    )
+                    if by_key >= 0:
+                        record["id"] = costing["recipes"][by_key]["id"]
+                        costing["recipes"][by_key] = record
+                    else:
+                        costing["recipes"].append(record)
+                else:
+                    costing["recipes"][idx] = record
+                write_costing(costing)
+                return self._json(
+                    200, {"ok": True, "recipe": record, "costing": read_costing()}
+                )
+
+            if action == "removeRecipe":
+                rid = str(body.get("id") or "").strip()
+                if not rid:
+                    return self._json(400, {"error": "id_required"})
+                idx = find_costing_list_index(costing["recipes"], rid)
+                if idx < 0:
+                    return self._json(404, {"error": "not_found"})
+                costing["recipes"].pop(idx)
+                write_costing(costing)
+                return self._json(200, {"ok": True, "id": rid, "costing": read_costing()})
+
+            return self._json(400, {"error": "invalid_action"})
+
         if route == "hardware" and method == "GET":
             if not session:
                 return self._json(401, {"error": "auth_required"})
@@ -3987,29 +4334,50 @@ class Handler(BaseHTTPRequestHandler):
             return
 
         if route == "orders" and method == "POST":
+            raw_type = str(body.get("type") or "food")
+            if raw_type == "waiter":
+                order_type = "waiter"
+            elif raw_type == "takeaway":
+                order_type = "takeaway"
+            else:
+                order_type = "food"
+            food_like = order_type in ("food", "takeaway")
             layout = read_table_layout()
-            table = parse_table_number(body.get("table"))
-            if not table:
-                return self._json(400, {"error": "table_required"})
-            if table not in known_table_set(layout):
-                return self._json(400, {"error": "table_unknown"})
-            if (layout.get("states") or {}).get(table) == "disabled":
-                return self._json(400, {"error": "table_disabled"})
+            if order_type == "takeaway":
+                table = "0"
+            else:
+                table = parse_table_number(body.get("table"))
+                if not table:
+                    return self._json(400, {"error": "table_required"})
+                if table not in known_table_set(layout):
+                    return self._json(400, {"error": "table_unknown"})
+                if (layout.get("states") or {}).get(table) == "disabled":
+                    return self._json(400, {"error": "table_disabled"})
             orders = read_json(ORDERS, [])
             if not isinstance(orders, list):
                 orders = []
             now = int(time.time() * 1000)
-            order_type = "waiter" if body.get("type") == "waiter" else "food"
+            items = body.get("items") or []
+            if food_like and not items:
+                return self._json(400, {"error": "items_required"})
             order = {
                 "id": secrets.token_hex(8),
                 "type": order_type,
                 "table": table,
                 "status": "waiting",
-                "items": body.get("items") or [],
-                "total": body.get("total") or 0,
+                "items": items if food_like else [],
+                "total": (body.get("total") or 0) if food_like else 0,
                 "createdAt": now,
                 "updatedAt": now,
             }
+            if food_like:
+                order["batches"] = [
+                    {
+                        "createdAt": now,
+                        "items": items,
+                        "total": order["total"],
+                    }
+                ]
             cust_id, cname, cphone = resolve_customer_link(body)
             apply_customer_link(order, cust_id, cname, cphone)
             orders.insert(0, order)
@@ -4065,6 +4433,8 @@ class Handler(BaseHTTPRequestHandler):
                 return self._json(200, payload)
 
             if action == "table":
+                if order_type == "takeaway":
+                    return self._json(400, {"error": "takeaway_no_table"})
                 new_table = parse_table_number(body.get("table"))
                 if not new_table:
                     return self._json(400, {"error": "table_required"})
@@ -4078,6 +4448,8 @@ class Handler(BaseHTTPRequestHandler):
                 append_order_history(found, "table", cur)
                 orders[found_i] = found
                 write_json(ORDERS, orders)
+                if order_type == "food":
+                    mark_table_full(new_table)
                 payload = tables_payload()
                 payload["order"] = found
                 payload["orders"] = orders

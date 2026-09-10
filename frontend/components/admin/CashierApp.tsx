@@ -24,6 +24,7 @@ import { StatsTab } from "@/components/admin/StatsTab";
 import { SettingsTab } from "@/components/admin/SettingsTab";
 import { CrmTab } from "@/components/admin/CrmTab";
 import { CouponsTab } from "@/components/admin/CouponsTab";
+import { CostingTab } from "@/components/admin/CostingTab";
 import { HardwareTab } from "@/components/admin/HardwareTab";
 import { PaymentTerminalsTab } from "@/components/admin/PaymentTerminalsTab";
 import { ReservationsTab } from "@/components/admin/ReservationsTab";
@@ -61,6 +62,7 @@ type Tab =
   | "stats"
   | "customers"
   | "coupons"
+  | "costing"
   | "hardware"
   | "payments"
   | "settings";
@@ -74,6 +76,7 @@ const TABS: Array<{ id: Tab; label: string }> = [
   { id: "stats", label: "آمار فروش" },
   { id: "customers", label: "باشگاه مشتریان" },
   { id: "coupons", label: "کوپن‌ها" },
+  { id: "costing", label: "هزینه‌یابی" },
   { id: "hardware", label: "سخت‌افزار" },
   { id: "payments", label: "پایانه‌های پرداخت" },
   { id: "settings", label: "تنظیمات" },
@@ -88,6 +91,7 @@ const TAB_TITLES: Record<Tab, string> = {
   stats: "آمار فروش",
   customers: "باشگاه مشتریان",
   coupons: "کوپن‌ها",
+  costing: "هزینه‌یابی",
   hardware: "سخت‌افزار",
   payments: "پایانه‌های پرداخت",
   settings: "تنظیمات",
@@ -531,6 +535,23 @@ export function CashierApp({ tenantSlug = "" }: { tenantSlug?: string }) {
                   />
                 ) : (
                   <CouponsTab active={tab === "coupons"} />
+                )
+              ) : null}
+            </div>
+            <div
+              className={`cashier-tab-panel${tab === "costing" ? " is-active" : ""}`}
+              id="cashier-tab-costing"
+              hidden={tab !== "costing"}
+            >
+              {tab === "costing" ? (
+                tabLocked && lockedTabFeature === "menuCosting" ? (
+                  <UpgradePlanPanel
+                    feature="menuCosting"
+                    planName={planAccess.planName}
+                    onUpgrade={() => requestUpgrade("menuCosting")}
+                  />
+                ) : (
+                  <CostingTab active={tab === "costing"} />
                 )
               ) : null}
             </div>

@@ -1,1 +1,34 @@
-[]
+[
+  {
+    "id": "d52c5f619fccc400",
+    "type": "food",
+    "table": "1",
+    "status": "ready",
+    "items": [
+      {
+        "id": "cat-1-item-0",
+        "name": "اسپرسو 100 عربیکا تخصصی",
+        "price": 230000,
+        "count": 2,
+        "toppings": []
+      }
+    ],
+    "total": 460000,
+    "createdAt": 1788944670556,
+    "updatedAt": 1788944671670,
+    "customerName": "",
+    "customerPhone": "",
+    "history": [
+      {
+        "at": 1788944671519,
+        "action": "status",
+        "status": "preparing"
+      },
+      {
+        "at": 1788944671670,
+        "action": "status",
+        "status": "ready"
+      }
+    ]
+  }
+]

@@ -39,6 +39,7 @@ export function apiUrl(path: string): string {
   if (path === "/api/settings") return `${base}/api/index.php?route=settings`;
   if (path === "/api/customers") return `${base}/api/index.php?route=customers`;
   if (path === "/api/coupons") return `${base}/api/index.php?route=coupons`;
+  if (path === "/api/costing") return `${base}/api/index.php?route=costing`;
   if (path === "/api/hardware") return `${base}/api/index.php?route=hardware`;
   if (path === "/api/printers") return `${base}/api/index.php?route=printers`;
   if (path === "/api/payment-terminals")

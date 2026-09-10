@@ -69,6 +69,27 @@ export function normalizeStatus(status?: string): string {
   return status || "waiting";
 }
 
+/** Takeaway sentinel table — not a physical seat (parse_table_number rejects 0). */
+export const TAKEAWAY_TABLE = "0";
+
+export function isTakeawayOrder(order: { type?: string } | null | undefined): boolean {
+  return order?.type === "takeaway";
+}
+
+export function isFoodLikeOrder(order: { type?: string } | null | undefined): boolean {
+  const t = order?.type || "food";
+  return t === "food" || t === "takeaway";
+}
+
+/** Display label for where the order belongs (table vs بیرون‌بر). */
+export function orderLocationLabel(order: {
+  type?: string;
+  table?: string | number;
+}): string {
+  if (order.type === "takeaway") return "بیرون‌بر";
+  return `میز ${toPersianDigits(String(order.table ?? ""))}`;
+}
+
 export function slugId(name: string, index: number): string {
   return `item-${index}-${name}`.replace(/\s+/g, "-").slice(0, 64);
 }

@@ -8,6 +8,7 @@ export const PLAN_FEATURES = [
   "hardware",
   "kitchenPrint",
   "tableOps",
+  "menuCosting",
 ] as const;
 
 export type PlanFeature = (typeof PLAN_FEATURES)[number];
@@ -30,6 +31,7 @@ export const FEATURE_LABELS: Record<PlanFeature, string> = {
   hardware: "سخت‌افزار و پرینتر",
   kitchenPrint: "چاپ تیکت آشپزخانه و بار",
   tableOps: "وضعیت میز و سفارش از نقشه میزها",
+  menuCosting: "هزینه‌یابی منو",
 };
 
 export const TAB_FEATURE: Record<string, PlanFeature> = {
@@ -40,6 +42,7 @@ export const TAB_FEATURE: Record<string, PlanFeature> = {
   coupons: "coupons",
   hardware: "hardware",
   payments: "paymentTerminal",
+  costing: "menuCosting",
 };
 
 function flags(value: boolean): PlanEntitlements {
@@ -53,6 +56,7 @@ function flags(value: boolean): PlanEntitlements {
     hardware: value,
     kitchenPrint: value,
     tableOps: value,
+    menuCosting: value,
   };
 }
 
@@ -87,6 +91,19 @@ export function normalizePlanAccess(raw: unknown): PlanAccess {
     } else {
       entitlements.tableOps = Boolean(
         entRaw.invoices || entRaw.reservations || entRaw.paymentTerminal
+      );
+    }
+  }
+  // Compat: older plans omit menuCosting — only highest (business) tier.
+  if (!Object.prototype.hasOwnProperty.call(entRaw, "menuCosting")) {
+    const planId = String(src.planId || "");
+    if (!planId) {
+      entitlements.menuCosting = true;
+    } else if (planId === "plan_business") {
+      entitlements.menuCosting = true;
+    } else {
+      entitlements.menuCosting = Boolean(
+        entRaw.crm && entRaw.hardware && entRaw.kitchenPrint
       );
     }
   }

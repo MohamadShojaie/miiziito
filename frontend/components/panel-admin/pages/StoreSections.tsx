@@ -14,6 +14,7 @@ import { DesktopMockup, HeroMockups, PhoneMockup } from "@/components/panel-admi
 import { FeatureCheckList, TrustStats } from "@/components/panel-admin/store/ProductPreviews";
 import { saFetch } from "@/lib/super-admin/api";
 import { SITE_CONFIG } from "@/lib/config";
+import { LANDING_FAQ } from "@/lib/landing-seo";
 
 /* ── Data ── */
 
@@ -129,40 +130,7 @@ const COMPARISON = [
   { old: "ابزارهای متعدد", next: "یک پلتفرم یکپارچه" },
 ] as const;
 
-const FAQ_ITEMS = [
-  {
-    q: "آیا مشتری نیاز به نصب اپلیکیشن دارد؟",
-    a: "خیر. مشتری با اسکن QR Code منوی شما را در مرورگر موبایل باز می‌کند — بدون دانلود یا نصب.",
-  },
-  {
-    q: "راه‌اندازی منوی دیجیتال چقدر زمان می‌برد؟",
-    a: "پس از خرید پلن و ثبت‌نام، می‌توانید محصولات و دسته‌بندی‌ها را وارد کنید و QR منو را در همان روز استفاده کنید.",
-  },
-  {
-    q: "آیا روی موبایل و تبلت هم کار می‌کند؟",
-    a: "بله. هم منوی مشتری و هم پنل مدیریت روی موبایل، تبلت و کامپیوتر در مرورگر کار می‌کنند.",
-  },
-  {
-    q: "آیا می‌توانم منوی خودم را شخصی‌سازی کنم؟",
-    a: "بله. نام کافه، لوگو، رنگ برند و چیدمان منو قابل تنظیم است.",
-  },
-  {
-    q: "آیا امکان مدیریت سفارش‌ها وجود دارد؟",
-    a: "بله. سفارش‌های آنلاین و دستی در پنل مدیریت با وضعیت‌های مختلف (جدید، آماده‌سازی، آماده) قابل پیگیری هستند.",
-  },
-  {
-    q: "آیا اطلاعات مشتریان ذخیره می‌شود؟",
-    a: "بله. باشگاه مشتریان تاریخچه سفارش، پروفایل و امتیاز وفاداری را نگه می‌دارد (بسته به پلن اشتراک).",
-  },
-  {
-    q: "پلن‌های اشتراک چگونه هستند؟",
-    a: "پلن‌های ۶ ماهه و سالانه با امکانات متفاوت وجود دارد. جزئیات در بخش قیمت‌گذاری نمایش داده می‌شود.",
-  },
-  {
-    q: "چطور با پشتیبانی تماس بگیرم؟",
-    a: "از بخش «تماس با ما» پیام بگذارید یا با شماره و تلگرام پشتیبانی ارتباط بگیرید. تیم میزییتو در اولین فرصت پاسخ می‌دهد.",
-  },
-] as const;
+const FAQ_ITEMS = LANDING_FAQ;
 
 function IconBox({ children }: { children: ReactNode }) {
   return <div className="mzt-icon-box">{children}</div>;
@@ -188,7 +156,7 @@ export function LandingNav({
   kind: "admin" | "cafe" | null;
 }) {
   const links = [
-    { id: "why", label: "چرا میزییتو" },
+    { id: "why", label: "چرا میزیتو" },
     { id: "innovate", label: "امکانات منو" },
     { id: "digital-menu", label: "منوی دیجیتال" },
     { id: "dashboard", label: "پنل مدیریت" },
@@ -280,14 +248,14 @@ export function HeroSection() {
               <strong>هوشمندتر مدیریت کن</strong>
             </h1>
             <p className="mzt-lead">
-              میزییتو منوی دیجیتال، سفارش‌گیری، صندوق، مشتریان و گزارش فروش را در یک پنل یکپارچه گرد هم می‌آورد.
+              میزیتو منوی دیجیتال، سفارش‌گیری، صندوق، مشتریان و گزارش فروش را در یک پنل یکپارچه گرد هم می‌آورد.
             </p>
             <div className="mzt-hero-actions">
               <a href="#plans" className="mzt-btn mzt-btn-primary mzt-btn-lg">
                 مشاهده پلن‌ها
               </a>
               <a href="#why" className="mzt-btn mzt-btn-secondary mzt-btn-lg">
-                چرا میزییتو؟
+                چرا میزیتو؟
               </a>
             </div>
             <p className="mzt-caption mzt-hero-trust">
@@ -331,7 +299,7 @@ export function WhySection() {
     <section className="mzt-section mzt-band-light mzt-why" id="why">
       <div className="mzt-container">
         <div className="mzt-section-head mzt-reveal">
-          <SectionBadge>چرا میزییتو</SectionBadge>
+          <SectionBadge>چرا میزیتو</SectionBadge>
           <h2 className="mzt-h2">همه‌چیز برای مدیریت بهتر کافه</h2>
           <p className="mzt-body">
             بدون نیاز به برنامه‌نویسی، هاست جدا یا اپ نصب‌کردنی — ثبت‌نام کنید، منو بسازید و QR بگیرید.
@@ -492,7 +460,7 @@ export function PricingComparisonBlock() {
       <div className="mzt-surface mzt-surface--elevated mzt-compare-table">
         <div className="mzt-compare-header">
           <span>روش سنتی</span>
-          <span>میزییتو</span>
+          <span>میزیتو</span>
         </div>
         {COMPARISON.map((row) => (
           <div key={row.old} className="mzt-compare-row">
@@ -515,7 +483,7 @@ export function TestimonialsSection() {
       <div className="mzt-container">
         <div className="mzt-section-head mzt-reveal">
           <SectionBadge>نتیجه اعتماد شما</SectionBadge>
-          <h2 className="mzt-h2" id="customers-title">کافه‌ها و رستوران‌های فعال روی میزییتو</h2>
+          <h2 className="mzt-h2" id="customers-title">کافه‌ها و رستوران‌های فعال روی میزیتو</h2>
           <p className="mzt-body">پلتفرمی برای مدیریت روزانه — از منوی دیجیتال تا صندوق و مشتریان.</p>
         </div>
 
@@ -690,7 +658,7 @@ export function ContactSection({ supportPhone }: { supportPhone?: string }) {
                 <strong>همین الان پیام بگذار</strong>
               </h2>
               <p className="mzt-body">
-                مشاوره انتخاب پلن، راه‌اندازی منوی دیجیتال یا پشتیبانی — تیم میزییتو در اولین فرصت جواب می‌دهد.
+                مشاوره انتخاب پلن، راه‌اندازی منوی دیجیتال یا پشتیبانی — تیم میزیتو در اولین فرصت جواب می‌دهد.
               </p>
               <ul className="mzt-contact-trust" aria-label="مزایای تماس">
                 <li>پاسخ سریع</li>
@@ -868,7 +836,7 @@ export function LandingFooter() {
           </div>
           <div className="mzt-footer-col">
             <strong className="mzt-label">محصول</strong>
-            <a href="#why">چرا میزییتو</a>
+            <a href="#why">چرا میزیتو</a>
             <a href="#innovate">امکانات منو</a>
             <a href="#digital-menu">منوی دیجیتال</a>
             <a href="#dashboard">پنل مدیریت</a>
@@ -886,7 +854,7 @@ export function LandingFooter() {
           </div>
         </div>
         <div className="mzt-footer-bottom">
-          <small className="mzt-caption">© {new Date().getFullYear()} میزییتو — تمامی حقوق محفوظ است.</small>
+          <small className="mzt-caption">© {new Date().getFullYear()} میزیتو — تمامی حقوق محفوظ است.</small>
         </div>
       </div>
     </footer>

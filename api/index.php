@@ -19,6 +19,7 @@ $invoicesFile = $dataDir . "/invoices.json";
 $customersFile = $dataDir . "/customers.json";
 $settingsFile = $dataDir . "/settings.json";
 $couponsFile = $dataDir . "/coupons.json";
+$costingFile = $dataDir . "/costing.json";
 $hardwareFile = $dataDir . "/hardware.json";
 $reservationsFile = $dataDir . "/reservations.json";
 $paymentTerminalsFile = $dataDir . "/payment_terminals.json";
@@ -747,7 +748,7 @@ function table_has_open_food($orders, $table) {
     $table = parse_table_number($table);
     foreach ($orders as $order) {
         $type = isset($order["type"]) ? $order["type"] : "food";
-        if ($type === "waiter") continue;
+        if ($type === "waiter" || $type === "takeaway") continue;
         if (parse_table_number(isset($order["table"]) ? $order["table"] : "") !== $table) continue;
         $st = normalize_status(isset($order["status"]) ? $order["status"] : "waiting");
         if (!order_is_closed($st)) return true;
@@ -1957,6 +1958,183 @@ function read_coupons($couponsFile) {
     return is_array($raw) ? $raw : array();
 }
 
+function default_costing_data() {
+    return array(
+        "settings" => array("profitPercent" => 40, "monthlyPortions" => 1000),
+        "ingredients" => array(),
+        "bills" => array(),
+        "employees" => array(),
+        "recipes" => array()
+    );
+}
+
+function new_costing_id($prefix) {
+    if (function_exists("random_bytes")) {
+        return $prefix . bin2hex(random_bytes(6));
+    }
+    return $prefix . dechex(mt_rand()) . dechex(mt_rand());
+}
+
+function normalize_costing_unit($raw) {
+    $unit = strtolower(trim((string) $raw));
+    $allowed = array("g" => true, "kg" => true, "ml" => true, "l" => true, "pcs" => true);
+    return isset($allowed[$unit]) ? $unit : "pcs";
+}
+
+function normalize_costing_settings($raw) {
+    if (!is_array($raw)) $raw = array();
+    $profit = isset($raw["profitPercent"]) ? floatval($raw["profitPercent"]) : 40;
+    if ($profit < 0) $profit = 0;
+    if ($profit > 1000) $profit = 1000;
+    $portions = isset($raw["monthlyPortions"]) ? floatval($raw["monthlyPortions"]) : 1000;
+    if ($portions < 1) $portions = 1;
+    return array(
+        "profitPercent" => $profit,
+        "monthlyPortions" => $portions
+    );
+}
+
+function normalize_costing_ingredient($raw, $fallbackId = "") {
+    if (!is_array($raw)) $raw = array();
+    $id = trim((string) (isset($raw["id"]) ? $raw["id"] : $fallbackId));
+    if ($id === "") $id = new_costing_id("ing_");
+    $name = clip_text(trim((string) (isset($raw["name"]) ? $raw["name"] : "")), 120);
+    $unitPrice = isset($raw["unitPrice"]) ? floatval($raw["unitPrice"]) : 0;
+    if ($unitPrice < 0) $unitPrice = 0;
+    return array(
+        "id" => $id,
+        "name" => $name,
+        "unit" => normalize_costing_unit(isset($raw["unit"]) ? $raw["unit"] : "pcs"),
+        "unitPrice" => $unitPrice
+    );
+}
+
+function normalize_costing_bill($raw, $fallbackId = "") {
+    if (!is_array($raw)) $raw = array();
+    $id = trim((string) (isset($raw["id"]) ? $raw["id"] : $fallbackId));
+    if ($id === "") $id = new_costing_id("bill_");
+    $amount = isset($raw["monthlyAmount"]) ? floatval($raw["monthlyAmount"]) : 0;
+    if ($amount < 0) $amount = 0;
+    return array(
+        "id" => $id,
+        "name" => clip_text(trim((string) (isset($raw["name"]) ? $raw["name"] : "")), 120),
+        "monthlyAmount" => $amount
+    );
+}
+
+function normalize_costing_employee($raw, $fallbackId = "") {
+    if (!is_array($raw)) $raw = array();
+    $id = trim((string) (isset($raw["id"]) ? $raw["id"] : $fallbackId));
+    if ($id === "") $id = new_costing_id("emp_");
+    $salary = isset($raw["salary"]) ? floatval($raw["salary"]) : 0;
+    if ($salary < 0) $salary = 0;
+    return array(
+        "id" => $id,
+        "name" => clip_text(trim((string) (isset($raw["name"]) ? $raw["name"] : "")), 120),
+        "role" => clip_text(trim((string) (isset($raw["role"]) ? $raw["role"] : "")), 80),
+        "salary" => $salary
+    );
+}
+
+function normalize_costing_recipe_lines($raw) {
+    $out = array();
+    if (!is_array($raw)) return $out;
+    foreach ($raw as $line) {
+        if (!is_array($line)) continue;
+        $ingredientId = trim((string) (isset($line["ingredientId"]) ? $line["ingredientId"] : ""));
+        if ($ingredientId === "") continue;
+        $qty = isset($line["qty"]) ? floatval($line["qty"]) : 0;
+        if ($qty < 0) $qty = 0;
+        $unit = normalize_costing_unit(isset($line["unit"]) ? $line["unit"] : "pcs");
+        $out[] = array("ingredientId" => $ingredientId, "qty" => $qty, "unit" => $unit);
+    }
+    return $out;
+}
+
+function normalize_costing_recipe($raw, $fallbackId = "") {
+    if (!is_array($raw)) $raw = array();
+    $id = trim((string) (isset($raw["id"]) ? $raw["id"] : $fallbackId));
+    if ($id === "") $id = new_costing_id("rcp_");
+    return array(
+        "id" => $id,
+        "menuItemKey" => clip_text(trim((string) (isset($raw["menuItemKey"]) ? $raw["menuItemKey"] : "")), 80),
+        "lines" => normalize_costing_recipe_lines(isset($raw["lines"]) ? $raw["lines"] : array())
+    );
+}
+
+function normalize_costing_data($raw) {
+    $base = default_costing_data();
+    if (!is_array($raw)) return $base;
+    $base["settings"] = normalize_costing_settings(isset($raw["settings"]) ? $raw["settings"] : array());
+    $ingredients = array();
+    if (isset($raw["ingredients"]) && is_array($raw["ingredients"])) {
+        foreach ($raw["ingredients"] as $row) {
+            $item = normalize_costing_ingredient($row);
+            if ($item["name"] === "") continue;
+            $ingredients[] = $item;
+        }
+    }
+    $bills = array();
+    if (isset($raw["bills"]) && is_array($raw["bills"])) {
+        foreach ($raw["bills"] as $row) {
+            $item = normalize_costing_bill($row);
+            if ($item["name"] === "") continue;
+            $bills[] = $item;
+        }
+    }
+    $employees = array();
+    if (isset($raw["employees"]) && is_array($raw["employees"])) {
+        foreach ($raw["employees"] as $row) {
+            $item = normalize_costing_employee($row);
+            if ($item["name"] === "") continue;
+            $employees[] = $item;
+        }
+    }
+    $recipes = array();
+    if (isset($raw["recipes"]) && is_array($raw["recipes"])) {
+        foreach ($raw["recipes"] as $row) {
+            $item = normalize_costing_recipe($row);
+            if ($item["menuItemKey"] === "") continue;
+            $recipes[] = $item;
+        }
+    }
+    $base["ingredients"] = $ingredients;
+    $base["bills"] = $bills;
+    $base["employees"] = $employees;
+    $base["recipes"] = $recipes;
+    return $base;
+}
+
+function read_costing($costingFile) {
+    $raw = read_json_file($costingFile, default_costing_data());
+    return normalize_costing_data($raw);
+}
+
+function write_costing($costingFile, $data) {
+    write_json_file($costingFile, normalize_costing_data($data));
+}
+
+function find_costing_list_index($list, $id) {
+    if (!is_array($list)) return -1;
+    $id = trim((string) $id);
+    if ($id === "") return -1;
+    foreach ($list as $i => $row) {
+        if (!is_array($row)) continue;
+        if ((string) (isset($row["id"]) ? $row["id"] : "") === $id) return $i;
+    }
+    return -1;
+}
+
+function find_costing_recipe_by_menu_key($recipes, $menuItemKey) {
+    $key = trim((string) $menuItemKey);
+    if ($key === "") return -1;
+    foreach ($recipes as $i => $row) {
+        if (!is_array($row)) continue;
+        if ((string) (isset($row["menuItemKey"]) ? $row["menuItemKey"] : "") === $key) return $i;
+    }
+    return -1;
+}
+
 function write_coupons($couponsFile, $coupons) {
     if (!is_array($coupons)) $coupons = array();
     write_json_file($couponsFile, array_values($coupons));
@@ -2764,6 +2942,7 @@ ensure_json_file($invoicesFile, "[]");
 ensure_json_file($customersFile, "[]");
 ensure_json_file($settingsFile, "{}");
 ensure_json_file($couponsFile, "[]");
+ensure_json_file($costingFile, '{"settings":{"profitPercent":40,"monthlyPortions":1000},"ingredients":[],"bills":[],"employees":[],"recipes":[]}');
 ensure_json_file($hardwareFile, "[]");
 ensure_json_file($reservationsFile, "[]");
 
@@ -2799,6 +2978,8 @@ if ($tenantSlug !== "") {
             $uploadsDir,
             $tenantCafe["id"]
         );
+        $costingFile = $dataDir . "/tenants/" . $tenantCafe["id"] . "/costing.json";
+        ensure_json_file($costingFile, '{"settings":{"profitPercent":40,"monthlyPortions":1000},"ingredients":[],"bills":[],"employees":[],"recipes":[]}');
     }
 }
 
@@ -3458,6 +3639,151 @@ if ($route === "coupons" && $method === "POST") {
     send_json(400, array("error" => "invalid_action"));
 }
 
+if ($route === "costing" && $method === "GET") {
+    require_cashier($sessionsFile, $body);
+    require_entitlement("menuCosting");
+    send_json(200, array("costing" => read_costing($costingFile)));
+}
+
+if ($route === "costing" && $method === "POST") {
+    require_cashier($sessionsFile, $body);
+    require_entitlement("menuCosting");
+    $costing = read_costing($costingFile);
+    $action = isset($body["action"]) ? (string) $body["action"] : "";
+
+    if ($action === "saveSettings") {
+        $costing["settings"] = normalize_costing_settings(isset($body["settings"]) ? $body["settings"] : $body);
+        write_costing($costingFile, $costing);
+        send_json(200, array("ok" => true, "costing" => read_costing($costingFile)));
+    }
+
+    if ($action === "upsertIngredient") {
+        $record = normalize_costing_ingredient($body, isset($body["id"]) ? $body["id"] : "");
+        if ($record["name"] === "") send_json(400, array("error" => "name_required"));
+        $idx = find_costing_list_index($costing["ingredients"], $record["id"]);
+        if ($idx < 0) $costing["ingredients"][] = $record;
+        else $costing["ingredients"][$idx] = $record;
+        write_costing($costingFile, $costing);
+        send_json(200, array("ok" => true, "ingredient" => $record, "costing" => read_costing($costingFile)));
+    }
+
+    if ($action === "removeIngredient") {
+        $rid = trim((string) (isset($body["id"]) ? $body["id"] : ""));
+        if ($rid === "") send_json(400, array("error" => "id_required"));
+        $idx = find_costing_list_index($costing["ingredients"], $rid);
+        if ($idx < 0) send_json(404, array("error" => "not_found"));
+        array_splice($costing["ingredients"], $idx, 1);
+        foreach ($costing["recipes"] as $ri => $recipe) {
+            if (!is_array($recipe) || !isset($recipe["lines"]) || !is_array($recipe["lines"])) continue;
+            $lines = array();
+            foreach ($recipe["lines"] as $line) {
+                if (!is_array($line)) continue;
+                if ((string) (isset($line["ingredientId"]) ? $line["ingredientId"] : "") === $rid) continue;
+                $lines[] = $line;
+            }
+            $costing["recipes"][$ri]["lines"] = $lines;
+        }
+        write_costing($costingFile, $costing);
+        send_json(200, array("ok" => true, "id" => $rid, "costing" => read_costing($costingFile)));
+    }
+
+    if ($action === "upsertBill") {
+        $record = normalize_costing_bill($body, isset($body["id"]) ? $body["id"] : "");
+        if ($record["name"] === "") send_json(400, array("error" => "name_required"));
+        $idx = find_costing_list_index($costing["bills"], $record["id"]);
+        if ($idx < 0) $costing["bills"][] = $record;
+        else $costing["bills"][$idx] = $record;
+        write_costing($costingFile, $costing);
+        send_json(200, array("ok" => true, "bill" => $record, "costing" => read_costing($costingFile)));
+    }
+
+    if ($action === "removeBill") {
+        $rid = trim((string) (isset($body["id"]) ? $body["id"] : ""));
+        if ($rid === "") send_json(400, array("error" => "id_required"));
+        $idx = find_costing_list_index($costing["bills"], $rid);
+        if ($idx < 0) send_json(404, array("error" => "not_found"));
+        array_splice($costing["bills"], $idx, 1);
+        write_costing($costingFile, $costing);
+        send_json(200, array("ok" => true, "id" => $rid, "costing" => read_costing($costingFile)));
+    }
+
+    if ($action === "upsertEmployee") {
+        $record = normalize_costing_employee($body, isset($body["id"]) ? $body["id"] : "");
+        if ($record["name"] === "") send_json(400, array("error" => "name_required"));
+        $idx = find_costing_list_index($costing["employees"], $record["id"]);
+        if ($idx < 0) $costing["employees"][] = $record;
+        else $costing["employees"][$idx] = $record;
+        write_costing($costingFile, $costing);
+        send_json(200, array("ok" => true, "employee" => $record, "costing" => read_costing($costingFile)));
+    }
+
+    if ($action === "removeEmployee") {
+        $rid = trim((string) (isset($body["id"]) ? $body["id"] : ""));
+        if ($rid === "") send_json(400, array("error" => "id_required"));
+        $idx = find_costing_list_index($costing["employees"], $rid);
+        if ($idx < 0) send_json(404, array("error" => "not_found"));
+        array_splice($costing["employees"], $idx, 1);
+        write_costing($costingFile, $costing);
+        send_json(200, array("ok" => true, "id" => $rid, "costing" => read_costing($costingFile)));
+    }
+
+    if ($action === "upsertRecipe") {
+        $record = normalize_costing_recipe($body, isset($body["id"]) ? $body["id"] : "");
+        if ($record["menuItemKey"] === "") send_json(400, array("error" => "menu_item_required"));
+        $known = array();
+        foreach ($costing["ingredients"] as $ing) {
+            if (!is_array($ing) || empty($ing["id"])) continue;
+            $known[(string) $ing["id"]] = $ing;
+        }
+        $lines = array();
+        foreach ($record["lines"] as $line) {
+            $iid = (string) $line["ingredientId"];
+            if (!isset($known[$iid])) continue;
+            $ingUnit = normalize_costing_unit(isset($known[$iid]["unit"]) ? $known[$iid]["unit"] : "pcs");
+            $useUnit = normalize_costing_unit(isset($line["unit"]) ? $line["unit"] : $ingUnit);
+            $mass = array("g" => true, "kg" => true);
+            $vol = array("ml" => true, "l" => true);
+            $compatible =
+                ($useUnit === $ingUnit) ||
+                (isset($mass[$useUnit]) && isset($mass[$ingUnit])) ||
+                (isset($vol[$useUnit]) && isset($vol[$ingUnit]));
+            if (!$compatible) $useUnit = $ingUnit;
+            $lines[] = array(
+                "ingredientId" => $iid,
+                "qty" => isset($line["qty"]) ? floatval($line["qty"]) : 0,
+                "unit" => $useUnit
+            );
+        }
+        $record["lines"] = $lines;
+        $idx = find_costing_list_index($costing["recipes"], $record["id"]);
+        if ($idx < 0) {
+            $byKey = find_costing_recipe_by_menu_key($costing["recipes"], $record["menuItemKey"]);
+            if ($byKey >= 0) {
+                $record["id"] = $costing["recipes"][$byKey]["id"];
+                $costing["recipes"][$byKey] = $record;
+            } else {
+                $costing["recipes"][] = $record;
+            }
+        } else {
+            $costing["recipes"][$idx] = $record;
+        }
+        write_costing($costingFile, $costing);
+        send_json(200, array("ok" => true, "recipe" => $record, "costing" => read_costing($costingFile)));
+    }
+
+    if ($action === "removeRecipe") {
+        $rid = trim((string) (isset($body["id"]) ? $body["id"] : ""));
+        if ($rid === "") send_json(400, array("error" => "id_required"));
+        $idx = find_costing_list_index($costing["recipes"], $rid);
+        if ($idx < 0) send_json(404, array("error" => "not_found"));
+        array_splice($costing["recipes"], $idx, 1);
+        write_costing($costingFile, $costing);
+        send_json(200, array("ok" => true, "id" => $rid, "costing" => read_costing($costingFile)));
+    }
+
+    send_json(400, array("error" => "invalid_action"));
+}
+
 if ($route === "hardware" && $method === "GET") {
     require_cashier($sessionsFile, $body);
     require_entitlement("hardware");
@@ -3996,21 +4322,33 @@ if ($route === "stream" && $method === "GET") {
 }
 
 if ($route === "orders" && $method === "POST") {
-    $type = isset($body["type"]) && $body["type"] === "waiter" ? "waiter" : "food";
-    $table = parse_table_number(isset($body["table"]) ? $body["table"] : "");
-    if ($table === "") {
-        send_json(400, array("error" => "table_required"));
+    $rawType = isset($body["type"]) ? (string) $body["type"] : "food";
+    if ($rawType === "waiter") {
+        $type = "waiter";
+    } elseif ($rawType === "takeaway") {
+        $type = "takeaway";
+    } else {
+        $type = "food";
     }
-    $layout = read_table_layout($tablesFile);
-    if (!is_known_table($layout, $table)) {
-        send_json(400, array("error" => "table_unknown"));
-    }
-    if (table_state_of($layout, $table) === "disabled") {
-        send_json(400, array("error" => "table_disabled"));
+    $foodLike = ($type === "food" || $type === "takeaway");
+    if ($type === "takeaway") {
+        $table = "0";
+    } else {
+        $table = parse_table_number(isset($body["table"]) ? $body["table"] : "");
+        if ($table === "") {
+            send_json(400, array("error" => "table_required"));
+        }
+        $layout = read_table_layout($tablesFile);
+        if (!is_known_table($layout, $table)) {
+            send_json(400, array("error" => "table_unknown"));
+        }
+        if (table_state_of($layout, $table) === "disabled") {
+            send_json(400, array("error" => "table_disabled"));
+        }
     }
     $items = array();
     $total = 0;
-    if ($type === "food") {
+    if ($foodLike) {
         $items = sanitize_items(isset($body["items"]) ? $body["items"] : null);
         if (!$items) {
             send_json(400, array("error" => "items_required"));
@@ -4026,10 +4364,13 @@ if ($route === "orders" && $method === "POST") {
         $st = normalize_status(isset($existing["status"]) ? $existing["status"] : "waiting");
         $existingType = isset($existing["type"]) ? $existing["type"] : "food";
         if ($existingType !== $type) continue;
-        if (parse_table_number(isset($existing["table"]) ? $existing["table"] : "") !== $table) continue;
+        $existingTable = ($existingType === "takeaway")
+            ? "0"
+            : parse_table_number(isset($existing["table"]) ? $existing["table"] : "");
+        if ($existingTable !== $table) continue;
         if (order_is_closed($st)) continue;
 
-        if ($type === "food") {
+        if ($foodLike) {
             if (empty($existing["batches"]) || !is_array($existing["batches"])) {
                 $existing["batches"] = array(array(
                     "createdAt" => isset($existing["createdAt"]) ? $existing["createdAt"] : $now,
@@ -4059,7 +4400,7 @@ if ($route === "orders" && $method === "POST") {
             list($custId, $cname, $cphone) = resolve_customer_link($customersFile, $body, $existing);
             apply_customer_link($existing, $custId, $cname, $cphone);
         }
-        append_order_history($existing, $type === "food" ? "items_added" : "called_again", "waiting");
+        append_order_history($existing, $foodLike ? "items_added" : "called_again", "waiting");
         $order = $existing;
         $merged = true;
         break;
@@ -4083,7 +4424,7 @@ if ($route === "orders" && $method === "POST") {
             "status" => "waiting",
             "createdAt" => $now,
             "updatedAt" => $now,
-            "batches" => $type === "food" ? array(array(
+            "batches" => $foodLike ? array(array(
                 "createdAt" => $now,
                 "items" => $items,
                 "total" => $total
@@ -4157,13 +4498,16 @@ if ($route === "item" && $id !== "") {
     }
 
     if (($method === "PATCH" || $method === "POST") && $action === "table") {
+        $foundType = isset($found["type"]) ? $found["type"] : "food";
+        if ($foundType === "takeaway") {
+            send_json(400, array("error" => "takeaway_no_table"));
+        }
         $newTable = parse_table_number(isset($body["table"]) ? $body["table"] : "");
         if ($newTable === "") send_json(400, array("error" => "table_required"));
         $layout = read_table_layout($tablesFile);
         if (!is_known_table($layout, $newTable)) send_json(400, array("error" => "table_unknown"));
         if (table_state_of($layout, $newTable) === "disabled") send_json(400, array("error" => "table_disabled"));
         $oldTable = parse_table_number(isset($found["table"]) ? $found["table"] : "");
-        $foundType = isset($found["type"]) ? $found["type"] : "food";
         $found["table"] = $newTable;
         $found["updatedAt"] = now_ms();
         append_order_history($found, "table", isset($found["status"]) ? $found["status"] : "waiting");
@@ -4257,9 +4601,9 @@ if ($route === "item" && $id !== "") {
         $orders[$foundIndex] = $found;
         write_json_file($ordersFile, $orders);
         $layout = read_table_layout($tablesFile);
-        if ($orderType !== "waiter" && order_is_closed($nextStatus)) {
+        if ($orderType !== "waiter" && $orderType !== "takeaway" && order_is_closed($nextStatus)) {
             $layout = maybe_free_table($tablesFile, isset($found["table"]) ? $found["table"] : "", $orders);
-        } elseif ($orderType !== "waiter" && !order_is_closed($nextStatus)) {
+        } elseif ($orderType !== "waiter" && $orderType !== "takeaway" && !order_is_closed($nextStatus)) {
             $layout = mark_table_full($tablesFile, isset($found["table"]) ? $found["table"] : "");
         }
         $payload = tables_api_payload($layout);

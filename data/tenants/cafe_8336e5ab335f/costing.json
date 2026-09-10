@@ -1,0 +1,73 @@
+{
+  "settings": {
+    "profitPercent": 30.0,
+    "monthlyPortions": 1000.0
+  },
+  "ingredients": [
+    {
+      "id": "ing_1ba96bbb1f3a",
+      "name": "سس",
+      "unit": "g",
+      "unitPrice": 10000.0
+    },
+    {
+      "id": "ing_dd4072037cbc",
+      "name": "نان",
+      "unit": "pcs",
+      "unitPrice": 5000.0
+    },
+    {
+      "id": "ing_9818fec11dee",
+      "name": "کاهو",
+      "unit": "g",
+      "unitPrice": 6500.0
+    },
+    {
+      "id": "ing_f4f5df7d475c",
+      "name": "گوشت",
+      "unit": "kg",
+      "unitPrice": 1700000.0
+    }
+  ],
+  "bills": [
+    {
+      "id": "bill_546db3cb2cf1",
+      "name": "قبض آب",
+      "monthlyAmount": 500000.0
+    }
+  ],
+  "employees": [
+    {
+      "id": "emp_24a016fb33a2",
+      "name": "محمد شجاعی",
+      "role": "سالن دار",
+      "salary": 18500000.0
+    },
+    {
+      "id": "emp_6c6626e36599",
+      "name": "عرفان",
+      "role": "بار من",
+      "salary": 19000000.0
+    }
+  ],
+  "recipes": [
+    {
+      "id": "rcp_ab8c70822a4c",
+      "menuItemKey": "cat-14-item-0",
+      "lines": [
+        {
+          "ingredientId": "ing_1ba96bbb1f3a",
+          "qty": 5.0
+        },
+        {
+          "ingredientId": "ing_f4f5df7d475c",
+          "qty": 100.0
+        },
+        {
+          "ingredientId": "ing_dd4072037cbc",
+          "qty": 2.0
+        }
+      ]
+    }
+  ]
+}

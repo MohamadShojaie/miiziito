@@ -11,6 +11,8 @@ import {
   formatPriceAsNumber,
   toPersianDigits,
   parsePrice,
+  orderLocationLabel,
+  isTakeawayOrder,
 } from "@/lib/format";
 import { ORDER_STATUS_LABEL, tablesFromRegions } from "@/lib/types";
 import { useToast } from "@/components/ToastProvider";
@@ -72,6 +74,7 @@ const FILTERS = [
   ["waiting", "جدید"],
   ["preparing", "آماده‌سازی"],
   ["ready", "آماده"],
+  ["takeaway", "بیرون‌بر"],
 ] as const;
 
 const STATUS_OPTIONS = [
@@ -136,7 +139,7 @@ function printOrderTicket(order: Order) {
   .total{margin-top:12px;font-size:15px;font-weight:700}
 </style></head><body>
 <h1>${DEFAULT_CAFE_NAME_FA} — تیکت سفارش</h1>
-<div class="meta">میز ${toPersianDigits(String(order.table))} · ${formatOrderTime(order.createdAt)} · ${ORDER_STATUS_LABEL[st] || st}</div>
+<div class="meta">${orderLocationLabel(order)} · ${formatOrderTime(order.createdAt)} · ${ORDER_STATUS_LABEL[st] || st}</div>
 <table><thead><tr><th>آیتم</th><th>تعداد</th><th>قیمت</th></tr></thead><tbody>${itemsHtml || "<tr><td colspan='3'>—</td></tr>"}</tbody></table>
 <div class="total">مجموع: ${formatPriceAsNumber(order.total || 0)}</div>
 </body></html>`;
@@ -332,13 +335,16 @@ export function OrdersTab({
   }
 
   const counts = useMemo(() => {
-    const c = { all: 0, waiting: 0, preparing: 0, ready: 0 };
+    const c = { all: 0, waiting: 0, preparing: 0, ready: 0, takeaway: 0 };
     orders.forEach((o) => {
       if (!isOperational(o)) return;
       const st = normalizeStatus(o.status);
       c.all += 1;
+      if (isTakeawayOrder(o)) c.takeaway += 1;
       const bucket = st === "delivered" ? "ready" : st;
-      if (bucket in c) (c as Record<string, number>)[bucket] += 1;
+      if (bucket === "waiting" || bucket === "preparing" || bucket === "ready") {
+        c[bucket] += 1;
+      }
     });
     return c;
   }, [orders]);
@@ -349,7 +355,9 @@ export function OrdersTab({
       .filter((o) => {
         if (!isOperational(o)) return false;
         const st = normalizeStatus(o.status);
-        if (
+        if (filter === "takeaway") {
+          if (!isTakeawayOrder(o)) return false;
+        } else if (
           filter !== "all" &&
           st !== filter &&
           !(filter === "ready" && st === "delivered")
@@ -357,7 +365,8 @@ export function OrdersTab({
           return false;
         }
         if (!needle) return true;
-        const hay = `میز ${o.table} ${(o.items || []).map((i) => i.name).join(" ")}`;
+        const loc = orderLocationLabel(o);
+        const hay = `${loc} بیرون‌بر ${o.table} ${(o.items || []).map((i) => i.name).join(" ")}`;
         return hay.includes(needle) || hay.includes(toPersianDigits(needle));
       })
       .sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
@@ -371,7 +380,12 @@ export function OrdersTab({
         headers: cashierHeaders(),
         body: JSON.stringify(body),
       });
-      if (body.status && filter !== "all" && filter !== body.status) {
+      if (
+        body.status &&
+        filter !== "all" &&
+        filter !== "takeaway" &&
+        filter !== body.status
+      ) {
         runOrdersMotion(() => {
           setFilter(String(body.status));
           onPatched(data);
@@ -532,7 +546,7 @@ export function OrdersTab({
           <input
             className="cp-search orders-search-input"
             type="search"
-            placeholder="جستجو: میز، آیتم…"
+            placeholder="جستجو: میز، بیرون‌بر، آیتم…"
             value={q}
             onChange={(e) => setQ(e.target.value)}
             aria-label="جستجوی سفارش"
@@ -602,6 +616,7 @@ export function OrdersTab({
                   "orders-card",
                   `orders-card--${st}`,
                   order.type === "waiter" ? "is-waiter" : "",
+                  isTakeawayOrder(order) ? "is-takeaway" : "",
                   busy ? "is-busy" : "",
                   menuOpen ? "is-menu-open" : "",
                   st === "waiting" ? "is-new" : "",
@@ -617,7 +632,7 @@ export function OrdersTab({
                 <header className="orders-card-head">
                   <div className="orders-card-head-start">
                     <span className="orders-card-table">
-                      میز {toPersianDigits(String(order.table))}
+                      {orderLocationLabel(order)}
                     </span>
                     <span className={`orders-badge orders-badge--${st}`}>
                       <span className="orders-badge-dot" aria-hidden="true" />
@@ -772,16 +787,18 @@ export function OrdersTab({
                         >
                           تغییر وضعیت
                         </button>
-                        <button
-                          type="button"
-                          role="menuitem"
-                          onClick={() => {
-                            setTableOrder(order);
-                            closeMenu();
-                          }}
-                        >
-                          تغییر میز
-                        </button>
+                        {!isTakeawayOrder(order) ? (
+                          <button
+                            type="button"
+                            role="menuitem"
+                            onClick={() => {
+                              setTableOrder(order);
+                              closeMenu();
+                            }}
+                          >
+                            تغییر میز
+                          </button>
+                        ) : null}
                         <button
                           type="button"
                           role="menuitem"
@@ -863,7 +880,7 @@ export function OrdersTab({
                       جزئیات سفارش
                     </h4>
                     <p className="table-glass-sub">
-                      میز {toPersianDigits(String(detailOrder.table))} ·{" "}
+                      {orderLocationLabel(detailOrder)} ·{" "}
                       {formatOrderTime(detailOrder.createdAt)}
                     </p>
                   </div>
@@ -1053,7 +1070,7 @@ export function OrdersTab({
       {statusOrder ? (
         <OrderActionDialog
           title="تغییر وضعیت"
-          sub={`میز ${toPersianDigits(String(statusOrder.table))}`}
+          sub={orderLocationLabel(statusOrder)}
           labelledBy="order-status-title"
           onClose={() => !busyId && setStatusOrder(null)}
         >
@@ -1123,7 +1140,7 @@ export function OrdersTab({
       {cancelOrder ? (
         <OrderActionDialog
           title="لغو سفارش"
-          sub={`میز ${toPersianDigits(String(cancelOrder.table))}`}
+          sub={orderLocationLabel(cancelOrder)}
           labelledBy="order-cancel-title"
           onClose={() => !busyId && setCancelOrder(null)}
         >

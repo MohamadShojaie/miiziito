@@ -32,7 +32,7 @@ function tileClass(st: string) {
 }
 
 function isActiveOrder(order: Order) {
-  if (order.type === "waiter") return false;
+  if (order.type === "waiter" || order.type === "takeaway") return false;
   const st = normalizeStatus(order.status);
   return st === "waiting" || st === "preparing" || st === "ready" || st === "delivered";
 }

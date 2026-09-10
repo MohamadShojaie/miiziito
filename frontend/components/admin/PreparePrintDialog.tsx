@@ -9,7 +9,7 @@ import {
   normalizeHardwareDevice,
 } from "@/lib/hardware";
 import { apiJson, cashierHeaders } from "@/lib/api";
-import { toPersianDigits } from "@/lib/format";
+import { orderLocationLabel, toPersianDigits } from "@/lib/format";
 import {
   buildStationLookup,
   pickStationPrinter,
@@ -247,7 +247,7 @@ export function PreparePrintDialog({
               شروع آماده‌سازی
             </h4>
             <p className="table-glass-sub">
-              میز {toPersianDigits(String(order.table))} · ارسال تیکت به بخش‌ها
+              {orderLocationLabel(order)} · ارسال تیکت به بخش‌ها
             </p>
           </div>
           <button
@@ -360,10 +360,7 @@ function StationBlock({
   disabled?: boolean;
   onChange: (v: boolean) => void;
 }) {
-  const tableLabel =
-    order.table != null && String(order.table) !== ""
-      ? `میز ${toPersianDigits(String(order.table))}`
-      : "—";
+  const tableLabel = orderLocationLabel(order);
   const customer =
     [order.customerName, order.customerPhone].filter(Boolean).join(" · ") ||
     "—";

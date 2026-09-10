@@ -1,6 +1,5 @@
 import type { Metadata } from "next";
 import type { ReactNode } from "react";
-import "@/styles/panel-admin.css";
 
 export const metadata: Metadata = {
   robots: {
@@ -10,6 +9,6 @@ export const metadata: Metadata = {
   },
 };
 
-export default function PanelAdminSegmentLayout({ children }: { children: ReactNode }) {
+export default function LegacyAdminLayout({ children }: { children: ReactNode }) {
   return children;
 }
