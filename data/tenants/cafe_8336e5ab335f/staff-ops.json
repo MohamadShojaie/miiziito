@@ -1,0 +1,188 @@
+{
+  "sections": [
+    {
+      "id": "waiter",
+      "name": "سالن",
+      "access": "tasks",
+      "active": true
+    },
+    {
+      "id": "kitchen",
+      "name": "آشپزخانه",
+      "access": "tasks",
+      "active": true
+    },
+    {
+      "id": "bar",
+      "name": "بار",
+      "access": "tasks",
+      "active": true
+    },
+    {
+      "id": "cashier",
+      "name": "صندوق",
+      "access": "pos",
+      "active": true
+    }
+  ],
+  "employees": [
+    {
+      "id": "emp_ac63a1a3a08a",
+      "name": "محمد عباسی",
+      "passwordHash": "pbkdf2$a0f4a621b40cd49bf2e9f5e6f8668f9d$a50ee6a7eb3f1e35064a45d853a14d9b16318a0ff5be5ee79e380f2d20f37dbe",
+      "passwordPlain": "1234",
+      "section": "kitchen",
+      "active": true
+    },
+    {
+      "id": "emp_f0835a0fa301",
+      "name": "امیر علی فروزش",
+      "passwordHash": "pbkdf2$dea77c0e18f4bc48f9568eaccd6fd8c7$8f7c69f444d41214c20f3042af31992aa069eb6a5153b1839ff48a3beaa091e0",
+      "passwordPlain": "12345",
+      "section": "waiter",
+      "active": true
+    }
+  ],
+  "templates": [
+    {
+      "id": "tpl_c72f1cdb4716",
+      "section": "waiter",
+      "title": "تمیز کاری",
+      "items": [
+        {
+          "id": "ti_ef3f4a2f93ec",
+          "label": "ض۱"
+        },
+        {
+          "id": "ti_a8d91a1bad3f",
+          "label": "ض۲"
+        },
+        {
+          "id": "ti_7ebe9d2b9dfc",
+          "label": "ض۳"
+        }
+      ],
+      "active": true
+    }
+  ],
+  "runs": [
+    {
+      "id": "run_325c9e2e077f",
+      "date": "2026-09-10",
+      "employeeId": "emp_f0835a0fa301",
+      "templateId": "tpl_3f12eeb78f02",
+      "section": "waiter",
+      "items": [
+        {
+          "id": "ti_8deddceb648d",
+          "label": "ض۱",
+          "done": true,
+          "doneAt": 1789052661355
+        },
+        {
+          "id": "ti_6188aa22af59",
+          "label": "ض۲",
+          "done": true,
+          "doneAt": 1789052661936
+        },
+        {
+          "id": "ti_f8ddf21abea3",
+          "label": "ض۳",
+          "done": true,
+          "doneAt": 1789052662485
+        }
+      ],
+      "status": "approved",
+      "submittedAt": 1789052664285,
+      "reviewedAt": 1789052711369,
+      "reviewNote": "اخری رو انجام ندادی"
+    },
+    {
+      "id": "run_e45a518b0e85",
+      "date": "2026-09-10",
+      "employeeId": "emp_f0835a0fa301",
+      "templateId": "tpl_c72f1cdb4716",
+      "section": "waiter",
+      "items": [
+        {
+          "id": "ti_ef3f4a2f93ec",
+          "label": "ض۱",
+          "done": true,
+          "doneAt": 1789052727603
+        },
+        {
+          "id": "ti_a8d91a1bad3f",
+          "label": "ض۲",
+          "done": false
+        },
+        {
+          "id": "ti_7ebe9d2b9dfc",
+          "label": "ض۳",
+          "done": false
+        }
+      ],
+      "status": "approved",
+      "submittedAt": 1789052750250,
+      "reviewedAt": 1789052760450
+    },
+    {
+      "id": "run_8e5be4c74939",
+      "date": "2026-09-11",
+      "employeeId": "emp_f0835a0fa301",
+      "templateId": "tpl_c72f1cdb4716",
+      "section": "waiter",
+      "items": [
+        {
+          "id": "ti_ef3f4a2f93ec",
+          "label": "ض۱",
+          "done": true,
+          "doneAt": 1789149724376
+        },
+        {
+          "id": "ti_a8d91a1bad3f",
+          "label": "ض۲",
+          "done": true,
+          "doneAt": 1789149724995
+        },
+        {
+          "id": "ti_7ebe9d2b9dfc",
+          "label": "ض۳",
+          "done": false
+        }
+      ],
+      "status": "approved",
+      "submittedAt": 1789149725942,
+      "reviewedAt": 1789149779493
+    }
+  ],
+  "attendance": [
+    {
+      "date": "2026-09-10",
+      "marks": [
+        {
+          "employeeId": "emp_ac63a1a3a08a",
+          "status": "present",
+          "at": 1789051312430,
+          "by": "self"
+        },
+        {
+          "employeeId": "emp_f0835a0fa301",
+          "status": "present",
+          "at": 1789052663453,
+          "by": "self"
+        }
+      ]
+    },
+    {
+      "date": "2026-09-11",
+      "marks": [
+        {
+          "employeeId": "emp_f0835a0fa301",
+          "status": "present",
+          "at": 1789149722439,
+          "by": "self"
+        }
+      ]
+    }
+  ]
+}

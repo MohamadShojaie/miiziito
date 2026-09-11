@@ -20,6 +20,7 @@ $customersFile = $dataDir . "/customers.json";
 $settingsFile = $dataDir . "/settings.json";
 $couponsFile = $dataDir . "/coupons.json";
 $costingFile = $dataDir . "/costing.json";
+$staffOpsFile = $dataDir . "/staff-ops.json";
 $hardwareFile = $dataDir . "/hardware.json";
 $reservationsFile = $dataDir . "/reservations.json";
 $paymentTerminalsFile = $dataDir . "/payment_terminals.json";
@@ -29,6 +30,7 @@ $secretFile = $dataDir . "/secret.php";
 $uploadsDir = dirname(__DIR__) . "/uploads/items";
 require_once __DIR__ . "/storage.php";
 require_once __DIR__ . "/tenant.php";
+require_once __DIR__ . "/staff_ops.php";
 require_once __DIR__ . "/payment.php";
 if (is_file(__DIR__ . "/super_admin.php")) {
     require_once __DIR__ . "/super_admin.php";
@@ -345,19 +347,51 @@ function orders_live_payload($ordersFile, $tablesFile, $invoicesFile = "") {
 
 function parse_session($raw) {
     if (is_array($raw)) {
-        $role = (isset($raw["role"]) && $raw["role"] === "dev") ? "dev" : "cashier";
+        $roleRaw = isset($raw["role"]) ? (string) $raw["role"] : "cashier";
+        if ($roleRaw === "dev") {
+            $role = "dev";
+        } elseif ($roleRaw === "employee") {
+            $role = "employee";
+        } elseif ($roleRaw === "manager") {
+            $role = "manager";
+        } else {
+            $role = "cashier";
+        }
         $sandbox = "";
         if ($role === "dev") {
             $sandbox = sanitize_sandbox_id(isset($raw["sandbox"]) ? $raw["sandbox"] : "dev");
             if ($sandbox === "") $sandbox = "dev";
         }
-        return array(
+        $out = array(
             "created" => intval(isset($raw["created"]) ? $raw["created"] : 0),
             "role" => $role,
-            "sandbox" => $sandbox
+            "sandbox" => $sandbox,
+            "employeeId" => "",
+            "section" => "",
+            "sectionAccess" => "",
+            "employeeName" => "",
         );
+        if ($role === "employee") {
+            $out["employeeId"] = trim((string) (isset($raw["employeeId"]) ? $raw["employeeId"] : ""));
+            $out["section"] = normalize_staff_section(isset($raw["section"]) ? $raw["section"] : "waiter");
+            $access = isset($raw["sectionAccess"]) ? trim((string) $raw["sectionAccess"]) : "";
+            if ($access !== "pos" && $access !== "tasks") {
+                $access = resolve_section_access(array("sections" => default_staff_sections()), $out["section"]);
+            }
+            $out["sectionAccess"] = $access;
+            $out["employeeName"] = trim((string) (isset($raw["employeeName"]) ? $raw["employeeName"] : ""));
+        }
+        return $out;
     }
-    return array("created" => intval($raw), "role" => "cashier", "sandbox" => "");
+    return array(
+        "created" => intval($raw),
+        "role" => "cashier",
+        "sandbox" => "",
+        "employeeId" => "",
+        "section" => "",
+        "sectionAccess" => "",
+        "employeeName" => "",
+    );
 }
 
 function sanitize_sandbox_id($id) {
@@ -1003,10 +1037,18 @@ function request_token($body) {
 
 function require_cashier($sessionsFile, $body) {
     $rec = read_session($sessionsFile, $body);
-    if (!$rec) {
+    if (!$rec || !session_is_pos($rec)) {
         send_json(401, array("error" => "auth_required"));
     }
     return $rec["token"];
+}
+
+function require_manager($sessionsFile, $body) {
+    $rec = read_session($sessionsFile, $body);
+    if (!$rec || !session_is_manager($rec)) {
+        send_json(403, array("error" => "forbidden_role"));
+    }
+    return $rec;
 }
 
 function current_plan_access() {
@@ -1015,7 +1057,7 @@ function current_plan_access() {
         return lumiere_tenant_plan_access(isset($tenantCafe) ? $tenantCafe : null);
     }
     $unlocked = array();
-    foreach (array("invoices", "reservations", "coupons", "advancedAnalytics", "paymentTerminal", "crm", "hardware", "kitchenPrint", "tableOps") as $key) {
+    foreach (array("invoices", "reservations", "coupons", "advancedAnalytics", "paymentTerminal", "crm", "hardware", "kitchenPrint", "tableOps", "menuCosting", "staffOps") as $key) {
         $unlocked[$key] = true;
     }
     return array("planId" => "", "planName" => "", "entitlements" => $unlocked);
@@ -2943,6 +2985,7 @@ ensure_json_file($customersFile, "[]");
 ensure_json_file($settingsFile, "{}");
 ensure_json_file($couponsFile, "[]");
 ensure_json_file($costingFile, '{"settings":{"profitPercent":40,"monthlyPortions":1000},"ingredients":[],"bills":[],"employees":[],"recipes":[]}');
+ensure_json_file($staffOpsFile, '{"employees":[],"templates":[],"runs":[],"attendance":[]}');
 ensure_json_file($hardwareFile, "[]");
 ensure_json_file($reservationsFile, "[]");
 
@@ -2980,6 +3023,8 @@ if ($tenantSlug !== "") {
         );
         $costingFile = $dataDir . "/tenants/" . $tenantCafe["id"] . "/costing.json";
         ensure_json_file($costingFile, '{"settings":{"profitPercent":40,"monthlyPortions":1000},"ingredients":[],"bills":[],"employees":[],"recipes":[]}');
+        $staffOpsFile = $dataDir . "/tenants/" . $tenantCafe["id"] . "/staff-ops.json";
+        ensure_json_file($staffOpsFile, '{"employees":[],"templates":[],"runs":[],"attendance":[]}');
     }
 }
 
@@ -3055,18 +3100,22 @@ if ($route === "login" && $method === "POST") {
     $entered = isset($body["password"]) ? (string) $body["password"] : "";
     $role = "";
     $sandbox = "";
+    $employeeId = "";
+    $section = "";
+    $sectionAccess = "";
+    $employeeName = "";
     if ($tenantSlug !== "" && function_exists("lumiere_tenant_find_by_slug")) {
         $loginCafe = lumiere_tenant_find_by_slug($tenantSlug);
         if ($loginCafe && !empty($loginCafe["id"]) && function_exists("lumiere_tenant_verify_cashier_password")) {
             $tenantVerify = lumiere_tenant_verify_cashier_password($loginCafe["id"], $entered);
             if ($tenantVerify === true) {
-                $role = "cashier";
+                $role = "manager";
             }
         }
     }
     if ($role === "") {
         if (secret_matches($password, $entered)) {
-            $role = "cashier";
+            $role = "manager";
         } else {
             foreach ($devAccounts as $sid => $spass) {
                 if (secret_matches($spass, $entered)) {
@@ -3078,19 +3127,46 @@ if ($route === "login" && $method === "POST") {
         }
     }
     if ($role === "") {
+        $staffData = read_staff_ops($staffOpsFile);
+        $emp = find_staff_employee_by_password($staffData, $entered);
+        if ($emp) {
+            $role = "employee";
+            $employeeId = (string) $emp["id"];
+            $knownIds = array();
+            foreach ($staffData["sections"] as $s) $knownIds[] = $s["id"];
+            $section = normalize_staff_section($emp["section"], $knownIds);
+            $sectionAccess = resolve_section_access($staffData, $section);
+            $employeeName = (string) $emp["name"];
+        }
+    }
+    if ($role === "") {
         send_json(401, array("error" => "bad_password"));
     }
     $token = bin2hex(function_exists("random_bytes") ? random_bytes(24) : openssl_random_pseudo_bytes(24));
     $sessions = read_json_file($sessionsFile, array());
     if (!is_array($sessions)) $sessions = array();
-    $sessions[$token] = array("created" => time(), "role" => $role, "sandbox" => $sandbox);
+    $rec = array("created" => time(), "role" => $role, "sandbox" => $sandbox);
+    if ($role === "employee") {
+        $rec["employeeId"] = $employeeId;
+        $rec["section"] = $section;
+        $rec["sectionAccess"] = $sectionAccess;
+        $rec["employeeName"] = $employeeName;
+    }
+    $sessions[$token] = $rec;
     write_json_file($sessionsFile, $sessions);
-    send_json(200, array(
+    $payload = array(
         "token" => $token,
         "role" => $role,
         "sandbox" => $sandbox,
         "dev" => $role === "dev"
-    ));
+    );
+    if ($role === "employee") {
+        $payload["employeeId"] = $employeeId;
+        $payload["section"] = $section;
+        $payload["sectionAccess"] = $sectionAccess;
+        $payload["employeeName"] = $employeeName;
+    }
+    send_json(200, $payload);
 }
 
 if ($route === "logout" && $method === "POST") {
@@ -3101,6 +3177,18 @@ if ($route === "logout" && $method === "POST") {
         write_json_file($sessionsFile, $sessions);
     }
     send_json(200, array("ok" => true));
+}
+
+if (
+    $session
+    && isset($session["role"])
+    && (string) $session["role"] === "employee"
+    && !session_is_pos($session)
+) {
+    $allowed = ($route === "staff-ops" || $route === "logout" || ($route === "settings" && $method === "GET"));
+    if (!$allowed) {
+        send_json(403, array("error" => "forbidden_role"));
+    }
 }
 
 if ($route === "menu" && $method === "GET") {
@@ -3430,7 +3518,7 @@ if ($route === "settings" && $method === "GET") {
 }
 
 if ($route === "settings" && $method === "POST") {
-    require_cashier($sessionsFile, $body);
+    require_manager($sessionsFile, $body);
     $incoming = isset($body["settings"]) && is_array($body["settings"]) ? $body["settings"] : array();
     $settings = merge_site_settings(read_site_settings($settingsFile), $incoming);
     $settings["updatedAt"] = now_ms();
@@ -3779,6 +3867,315 @@ if ($route === "costing" && $method === "POST") {
         array_splice($costing["recipes"], $idx, 1);
         write_costing($costingFile, $costing);
         send_json(200, array("ok" => true, "id" => $rid, "costing" => read_costing($costingFile)));
+    }
+
+    send_json(400, array("error" => "invalid_action"));
+}
+
+if ($route === "staff-ops" && $method === "GET") {
+    if (!$session) send_json(401, array("error" => "auth_required"));
+    $date = isset($_GET["date"]) ? trim((string) $_GET["date"]) : tehran_today();
+    if ($date === "") $date = tehran_today();
+    $data = read_staff_ops($staffOpsFile);
+    if (session_is_manager($session)) {
+        require_entitlement("staffOps");
+        $data = ensure_staff_runs_for_date($staffOpsFile, $data, $date);
+        send_json(200, array("staffOps" => public_staff_ops($data), "today" => tehran_today()));
+    }
+    $eid = session_employee_id($session);
+    if ($eid === "" || (string) $session["role"] !== "employee") {
+        send_json(403, array("error" => "forbidden_role"));
+    }
+    $data = ensure_staff_runs_for_date($staffOpsFile, $data, $date, $eid);
+    $section = normalize_staff_section(isset($session["section"]) ? $session["section"] : "");
+    send_json(200, array(
+        "staffOps" => filter_staff_ops_for_employee($data, $eid, $section, $date),
+        "today" => tehran_today(),
+        "me" => array(
+            "employeeId" => $eid,
+            "section" => $section,
+            "name" => isset($session["employeeName"]) ? (string) $session["employeeName"] : "",
+        ),
+    ));
+}
+
+if ($route === "staff-ops" && $method === "POST") {
+    if (!$session) send_json(401, array("error" => "auth_required"));
+    $action = isset($body["action"]) ? (string) $body["action"] : "";
+    $data = read_staff_ops($staffOpsFile);
+    $today = tehran_today();
+
+    if ($action === "toggleItem" || $action === "submitRun" || $action === "markSelfAttendance") {
+        $eid = session_employee_id($session);
+        if ((string) $session["role"] !== "employee" || $eid === "") {
+            send_json(403, array("error" => "forbidden_role"));
+        }
+        $section = normalize_staff_section(isset($session["section"]) ? $session["section"] : "");
+        if ($action === "markSelfAttendance") {
+            $status = (isset($body["status"]) && (string) $body["status"] === "absent") ? "absent" : "present";
+            $dayIdx = -1;
+            foreach ($data["attendance"] as $i => $day) {
+                if (is_array($day) && (string) $day["date"] === $today) {
+                    $dayIdx = $i;
+                    break;
+                }
+            }
+            if ($dayIdx < 0) {
+                $data["attendance"][] = array("date" => $today, "marks" => array());
+                $dayIdx = count($data["attendance"]) - 1;
+            }
+            $found = false;
+            foreach ($data["attendance"][$dayIdx]["marks"] as $mi => $m) {
+                if ((string) $m["employeeId"] === $eid) {
+                    $data["attendance"][$dayIdx]["marks"][$mi]["status"] = $status;
+                    $data["attendance"][$dayIdx]["marks"][$mi]["at"] = now_ms();
+                    $data["attendance"][$dayIdx]["marks"][$mi]["by"] = "self";
+                    $found = true;
+                    break;
+                }
+            }
+            if (!$found) {
+                $data["attendance"][$dayIdx]["marks"][] = array(
+                    "employeeId" => $eid,
+                    "status" => $status,
+                    "at" => now_ms(),
+                    "by" => "self",
+                );
+            }
+            write_staff_ops($staffOpsFile, $data);
+            send_json(200, array(
+                "ok" => true,
+                "staffOps" => filter_staff_ops_for_employee(read_staff_ops($staffOpsFile), $eid, $section, $today),
+            ));
+        }
+        $runId = trim((string) (isset($body["runId"]) ? $body["runId"] : (isset($body["id"]) ? $body["id"] : "")));
+        $idx = find_staff_list_index($data["runs"], $runId);
+        if ($idx < 0) send_json(404, array("error" => "not_found"));
+        $run = $data["runs"][$idx];
+        if ((string) $run["employeeId"] !== $eid) send_json(403, array("error" => "forbidden_role"));
+        $st = (string) $run["status"];
+        if ($st !== "open" && $st !== "rejected") send_json(400, array("error" => "run_locked"));
+        if ($action === "toggleItem") {
+            $itemId = trim((string) (isset($body["itemId"]) ? $body["itemId"] : ""));
+            $done = !empty($body["done"]);
+            $foundItem = false;
+            foreach ($run["items"] as $ii => $item) {
+                if ((string) $item["id"] === $itemId) {
+                    $run["items"][$ii]["done"] = $done;
+                    if ($done) $run["items"][$ii]["doneAt"] = now_ms();
+                    else unset($run["items"][$ii]["doneAt"]);
+                    $foundItem = true;
+                    break;
+                }
+            }
+            if (!$foundItem) send_json(404, array("error" => "item_not_found"));
+            if ($st === "rejected") {
+                $run["status"] = "open";
+                unset($run["reviewedAt"], $run["reviewNote"]);
+            }
+            $data["runs"][$idx] = $run;
+            write_staff_ops($staffOpsFile, $data);
+            send_json(200, array(
+                "ok" => true,
+                "run" => $run,
+                "staffOps" => filter_staff_ops_for_employee(read_staff_ops($staffOpsFile), $eid, $section, $today),
+            ));
+        }
+        $run["status"] = "submitted";
+        $run["submittedAt"] = now_ms();
+        $data["runs"][$idx] = $run;
+        write_staff_ops($staffOpsFile, $data);
+        send_json(200, array(
+            "ok" => true,
+            "run" => $run,
+            "staffOps" => filter_staff_ops_for_employee(read_staff_ops($staffOpsFile), $eid, $section, $today),
+        ));
+    }
+
+    if (!session_is_manager($session)) send_json(403, array("error" => "forbidden_role"));
+    require_entitlement("staffOps");
+
+    if ($action === "upsertSection") {
+        $sid = sanitize_section_id(isset($body["id"]) ? $body["id"] : "");
+        $idx = $sid !== "" ? find_staff_list_index($data["sections"], $sid) : -1;
+        $record = normalize_staff_section_def($body, $sid);
+        if ($record["name"] === "") send_json(400, array("error" => "name_required"));
+        if ($record["id"] === "") send_json(400, array("error" => "id_required"));
+        if ($idx < 0) {
+            if (find_staff_list_index($data["sections"], $record["id"]) >= 0) {
+                send_json(400, array("error" => "section_exists"));
+            }
+            if (count($data["sections"]) >= 40) send_json(400, array("error" => "too_many"));
+            $data["sections"][] = $record;
+        } else {
+            $record["id"] = $data["sections"][$idx]["id"];
+            $data["sections"][$idx] = $record;
+        }
+        write_staff_ops($staffOpsFile, $data);
+        send_json(200, array("ok" => true, "section" => $record, "staffOps" => public_staff_ops(read_staff_ops($staffOpsFile))));
+    }
+
+    if ($action === "removeSection") {
+        $rid = sanitize_section_id(isset($body["id"]) ? $body["id"] : "");
+        if ($rid === "") send_json(400, array("error" => "id_required"));
+        $idx = find_staff_list_index($data["sections"], $rid);
+        if ($idx < 0) send_json(404, array("error" => "not_found"));
+        if (count($data["sections"]) <= 1) send_json(400, array("error" => "section_required"));
+        foreach ($data["employees"] as $emp) {
+            if (sanitize_section_id(isset($emp["section"]) ? $emp["section"] : "") === $rid) {
+                send_json(400, array("error" => "section_in_use"));
+            }
+        }
+        foreach ($data["templates"] as $tpl) {
+            if (sanitize_section_id(isset($tpl["section"]) ? $tpl["section"] : "") === $rid) {
+                send_json(400, array("error" => "section_in_use"));
+            }
+        }
+        array_splice($data["sections"], $idx, 1);
+        write_staff_ops($staffOpsFile, $data);
+        send_json(200, array("ok" => true, "id" => $rid, "staffOps" => public_staff_ops(read_staff_ops($staffOpsFile))));
+    }
+
+    if ($action === "upsertEmployee") {
+        $knownIds = array();
+        foreach ($data["sections"] as $s) $knownIds[] = $s["id"];
+        $eid = trim((string) (isset($body["id"]) ? $body["id"] : ""));
+        $password = isset($body["password"]) ? (string) $body["password"] : "";
+        $idx = $eid !== "" ? find_staff_list_index($data["employees"], $eid) : -1;
+        $keepHash = $idx >= 0 ? (string) $data["employees"][$idx]["passwordHash"] : "";
+        $keepPlain = $idx >= 0 ? (string) (isset($data["employees"][$idx]["passwordPlain"]) ? $data["employees"][$idx]["passwordPlain"] : "") : "";
+        if ($password !== "") {
+            if ($tenantSlug !== "" && function_exists("lumiere_tenant_find_by_slug") && function_exists("lumiere_tenant_verify_cashier_password")) {
+                $cafe = lumiere_tenant_find_by_slug($tenantSlug);
+                if ($cafe && !empty($cafe["id"]) && lumiere_tenant_verify_cashier_password($cafe["id"], $password) === true) {
+                    send_json(400, array("error" => "password_matches_manager"));
+                }
+            }
+            if (is_file($secretFile)) {
+                include $secretFile;
+                if (isset($CASHIER_PASSWORD) && secret_matches((string) $CASHIER_PASSWORD, $password)) {
+                    send_json(400, array("error" => "password_matches_manager"));
+                }
+            }
+            if (staff_password_taken($data, $password, $eid)) {
+                send_json(400, array("error" => "password_taken"));
+            }
+            $keepHash = staff_ops_hash_password($password);
+            $keepPlain = $password;
+        } elseif ($idx < 0) {
+            send_json(400, array("error" => "password_required"));
+        }
+        $record = normalize_staff_employee($body, $eid, $keepHash, $keepPlain, $knownIds);
+        if ($record["name"] === "") send_json(400, array("error" => "name_required"));
+        if ($record["passwordHash"] === "") send_json(400, array("error" => "password_required"));
+        if ($idx < 0) $data["employees"][] = $record;
+        else $data["employees"][$idx] = $record;
+        write_staff_ops($staffOpsFile, $data);
+        $pubEmp = array(
+            "id" => $record["id"],
+            "name" => $record["name"],
+            "section" => $record["section"],
+            "active" => $record["active"],
+            "password" => isset($record["passwordPlain"]) ? (string) $record["passwordPlain"] : "",
+        );
+        send_json(200, array("ok" => true, "employee" => $pubEmp, "staffOps" => public_staff_ops(read_staff_ops($staffOpsFile))));
+    }
+
+    if ($action === "removeEmployee") {
+        $rid = trim((string) (isset($body["id"]) ? $body["id"] : ""));
+        if ($rid === "") send_json(400, array("error" => "id_required"));
+        $idx = find_staff_list_index($data["employees"], $rid);
+        if ($idx < 0) send_json(404, array("error" => "not_found"));
+        array_splice($data["employees"], $idx, 1);
+        write_staff_ops($staffOpsFile, $data);
+        send_json(200, array("ok" => true, "id" => $rid, "staffOps" => public_staff_ops(read_staff_ops($staffOpsFile))));
+    }
+
+    if ($action === "upsertTemplate") {
+        $knownIds = array();
+        foreach ($data["sections"] as $s) $knownIds[] = $s["id"];
+        $record = normalize_staff_template($body, isset($body["id"]) ? $body["id"] : "", $knownIds);
+        if ($record["title"] === "") send_json(400, array("error" => "title_required"));
+        if (count($record["items"]) === 0) send_json(400, array("error" => "items_required"));
+        $idx = find_staff_list_index($data["templates"], $record["id"]);
+        if ($idx < 0) $data["templates"][] = $record;
+        else $data["templates"][$idx] = $record;
+        write_staff_ops($staffOpsFile, $data);
+        send_json(200, array("ok" => true, "template" => $record, "staffOps" => public_staff_ops(read_staff_ops($staffOpsFile))));
+    }
+
+    if ($action === "removeTemplate") {
+        $rid = trim((string) (isset($body["id"]) ? $body["id"] : ""));
+        if ($rid === "") send_json(400, array("error" => "id_required"));
+        $idx = find_staff_list_index($data["templates"], $rid);
+        if ($idx < 0) send_json(404, array("error" => "not_found"));
+        array_splice($data["templates"], $idx, 1);
+        write_staff_ops($staffOpsFile, $data);
+        send_json(200, array("ok" => true, "id" => $rid, "staffOps" => public_staff_ops(read_staff_ops($staffOpsFile))));
+    }
+
+    if ($action === "setAttendance") {
+        $eid = trim((string) (isset($body["employeeId"]) ? $body["employeeId"] : ""));
+        $date = trim((string) (isset($body["date"]) ? $body["date"] : $today));
+        if ($date === "") $date = $today;
+        $status = (isset($body["status"]) && (string) $body["status"] === "absent") ? "absent" : "present";
+        if ($eid === "") send_json(400, array("error" => "employee_required"));
+        $dayIdx = -1;
+        foreach ($data["attendance"] as $i => $day) {
+            if (is_array($day) && (string) $day["date"] === $date) {
+                $dayIdx = $i;
+                break;
+            }
+        }
+        if ($dayIdx < 0) {
+            $data["attendance"][] = array("date" => $date, "marks" => array());
+            $dayIdx = count($data["attendance"]) - 1;
+        }
+        $found = false;
+        foreach ($data["attendance"][$dayIdx]["marks"] as $mi => $m) {
+            if ((string) $m["employeeId"] === $eid) {
+                $data["attendance"][$dayIdx]["marks"][$mi]["status"] = $status;
+                $data["attendance"][$dayIdx]["marks"][$mi]["at"] = now_ms();
+                $data["attendance"][$dayIdx]["marks"][$mi]["by"] = "manager";
+                $found = true;
+                break;
+            }
+        }
+        if (!$found) {
+            $data["attendance"][$dayIdx]["marks"][] = array(
+                "employeeId" => $eid,
+                "status" => $status,
+                "at" => now_ms(),
+                "by" => "manager",
+            );
+        }
+        write_staff_ops($staffOpsFile, $data);
+        send_json(200, array("ok" => true, "staffOps" => public_staff_ops(read_staff_ops($staffOpsFile))));
+    }
+
+    if ($action === "ensureRuns") {
+        $date = trim((string) (isset($body["date"]) ? $body["date"] : $today));
+        if ($date === "") $date = $today;
+        $data = ensure_staff_runs_for_date($staffOpsFile, $data, $date);
+        send_json(200, array("ok" => true, "staffOps" => public_staff_ops($data)));
+    }
+
+    if ($action === "reviewRun") {
+        $runId = trim((string) (isset($body["runId"]) ? $body["runId"] : (isset($body["id"]) ? $body["id"] : "")));
+        $decision = trim((string) (isset($body["decision"]) ? $body["decision"] : (isset($body["status"]) ? $body["status"] : "")));
+        if ($decision !== "approved" && $decision !== "rejected") send_json(400, array("error" => "invalid_decision"));
+        $idx = find_staff_list_index($data["runs"], $runId);
+        if ($idx < 0) send_json(404, array("error" => "not_found"));
+        $run = $data["runs"][$idx];
+        if ((string) $run["status"] !== "submitted") send_json(400, array("error" => "not_submitted"));
+        $run["status"] = $decision;
+        $run["reviewedAt"] = now_ms();
+        $note = trim((string) (isset($body["reviewNote"]) ? $body["reviewNote"] : (isset($body["note"]) ? $body["note"] : "")));
+        if ($note !== "") $run["reviewNote"] = function_exists("clip_text") ? clip_text($note, 400) : substr($note, 0, 400);
+        else unset($run["reviewNote"]);
+        $data["runs"][$idx] = $run;
+        write_staff_ops($staffOpsFile, $data);
+        send_json(200, array("ok" => true, "run" => $run, "staffOps" => public_staff_ops(read_staff_ops($staffOpsFile))));
     }
 
     send_json(400, array("error" => "invalid_action"));

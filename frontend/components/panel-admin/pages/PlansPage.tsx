@@ -23,6 +23,7 @@ const ENTITLEMENT_BOOL: { key: string; label: string }[] = [
   { key: "kitchenPrint", label: "چاپ تیکت آشپزخانه / بار" },
   { key: "tableOps", label: "وضعیت میز و سفارش از نقشه میزها" },
   { key: "menuCosting", label: "هزینه‌یابی منو" },
+  { key: "staffOps", label: "مدیریت پرسنل و چک‌لیست" },
 ];
 
 const EMPTY_ENTITLEMENTS: Record<string, boolean> = Object.fromEntries(

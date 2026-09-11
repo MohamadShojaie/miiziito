@@ -9,9 +9,14 @@
     "role": "cashier",
     "sandbox": ""
   },
-  "bd6df92377990c4ef3ce71c67f224ba4911a666e9244e8ec": {
-    "created": 1788974351,
-    "role": "cashier",
+  "fbe3e6ae6b910a86a296380ed7cf3fe79672ae5292742f25": {
+    "created": 1789051709,
+    "role": "manager",
+    "sandbox": ""
+  },
+  "6e7709b95c798bd99ddbf78911736aacb5378197f26b8bf0": {
+    "created": 1789149767,
+    "role": "manager",
     "sandbox": ""
   }
 }

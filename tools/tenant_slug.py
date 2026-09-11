@@ -37,6 +37,7 @@ TENANT_DEFAULTS = {
     "reservations.json": "[]",
     "sessions.json": "{}",
     "costing.json": '{"settings":{"profitPercent":40,"monthlyPortions":1000},"ingredients":[],"bills":[],"employees":[],"recipes":[]}',
+    "staff-ops.json": '{"employees":[],"templates":[],"runs":[],"attendance":[]}',
 }
 
 
@@ -317,6 +318,7 @@ ENTITLEMENT_FLAGS = (
     "kitchenPrint",
     "tableOps",
     "menuCosting",
+    "staffOps",
 )
 
 ENTITLEMENT_LABELS_FA = {
@@ -330,6 +332,7 @@ ENTITLEMENT_LABELS_FA = {
     "kitchenPrint": "چاپ تیکت آشپزخانه و بار",
     "tableOps": "وضعیت میز و سفارش از نقشه میزها",
     "menuCosting": "هزینه‌یابی منو",
+    "staffOps": "مدیریت پرسنل و چک‌لیست",
 }
 
 
@@ -357,7 +360,7 @@ def default_plan_entitlements(tier: str) -> dict:
         ):
             ent[key] = True
     if tier == "business":
-        for key in ("crm", "hardware", "kitchenPrint", "menuCosting"):
+        for key in ("crm", "hardware", "kitchenPrint", "menuCosting", "staffOps"):
             ent[key] = True
     return ent
 

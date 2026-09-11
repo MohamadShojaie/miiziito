@@ -4,6 +4,10 @@ import { getMenuTenantSlug, tenantApiHeaders } from "./tenant";
 const TOKEN_KEY = "miiziito-cashier-token";
 const ROLE_KEY = "miiziito-cashier-role";
 const SANDBOX_KEY = "miiziito-dev-sandbox";
+const EMPLOYEE_KEY = "miiziito-cashier-employee";
+const SECTION_KEY = "miiziito-cashier-section";
+const SECTION_ACCESS_KEY = "miiziito-cashier-section-access";
+const EMPLOYEE_NAME_KEY = "miiziito-cashier-employee-name";
 const MUTE_KEY = "miiziito-alert-muted";
 const QUEUE_KEY = "miiziito-pending-orders";
 const CART_KEY = "miiziito-wanted";
@@ -23,6 +27,26 @@ function cashierSandboxKey(slug?: string): string {
   return tenant ? `${SANDBOX_KEY}:${tenant}` : SANDBOX_KEY;
 }
 
+function cashierEmployeeKey(slug?: string): string {
+  const tenant = slug || getMenuTenantSlug();
+  return tenant ? `${EMPLOYEE_KEY}:${tenant}` : EMPLOYEE_KEY;
+}
+
+function cashierSectionKey(slug?: string): string {
+  const tenant = slug || getMenuTenantSlug();
+  return tenant ? `${SECTION_KEY}:${tenant}` : SECTION_KEY;
+}
+
+function cashierSectionAccessKey(slug?: string): string {
+  const tenant = slug || getMenuTenantSlug();
+  return tenant ? `${SECTION_ACCESS_KEY}:${tenant}` : SECTION_ACCESS_KEY;
+}
+
+function cashierEmployeeNameKey(slug?: string): string {
+  const tenant = slug || getMenuTenantSlug();
+  return tenant ? `${EMPLOYEE_NAME_KEY}:${tenant}` : EMPLOYEE_NAME_KEY;
+}
+
 function getBase() {
   return String(SITE_CONFIG.apiUrl || "").replace(/\/$/, "");
 }
@@ -40,6 +64,7 @@ export function apiUrl(path: string): string {
   if (path === "/api/customers") return `${base}/api/index.php?route=customers`;
   if (path === "/api/coupons") return `${base}/api/index.php?route=coupons`;
   if (path === "/api/costing") return `${base}/api/index.php?route=costing`;
+  if (path === "/api/staff-ops") return `${base}/api/index.php?route=staff-ops`;
   if (path === "/api/hardware") return `${base}/api/index.php?route=hardware`;
   if (path === "/api/printers") return `${base}/api/index.php?route=printers`;
   if (path === "/api/payment-terminals")
@@ -75,7 +100,10 @@ export function setCashierToken(token: string, slug?: string) {
   if (typeof window === "undefined") return;
   const key = cashierTokenKey(slug);
   if (token) localStorage.setItem(key, token);
-  else localStorage.removeItem(key);
+  else {
+    localStorage.removeItem(key);
+    clearCashierSessionMeta(slug);
+  }
 }
 
 export function getCashierRole(slug?: string): string {
@@ -96,14 +124,86 @@ export function getSandboxId(slug?: string): string {
   }
 }
 
-export function setCashierRole(role: string, sandbox = "dev", slug?: string) {
+export function getEmployeeId(slug?: string): string {
+  if (typeof window === "undefined") return "";
+  try {
+    return localStorage.getItem(cashierEmployeeKey(slug)) || "";
+  } catch {
+    return "";
+  }
+}
+
+export function getEmployeeSection(slug?: string): string {
+  if (typeof window === "undefined") return "";
+  try {
+    return localStorage.getItem(cashierSectionKey(slug)) || "";
+  } catch {
+    return "";
+  }
+}
+
+export function getEmployeeSectionAccess(slug?: string): string {
+  if (typeof window === "undefined") return "";
+  try {
+    return localStorage.getItem(cashierSectionAccessKey(slug)) || "";
+  } catch {
+    return "";
+  }
+}
+
+export function getEmployeeName(slug?: string): string {
+  if (typeof window === "undefined") return "";
+  try {
+    return localStorage.getItem(cashierEmployeeNameKey(slug)) || "";
+  } catch {
+    return "";
+  }
+}
+
+function clearCashierSessionMeta(slug?: string) {
+  try {
+    localStorage.removeItem(cashierEmployeeKey(slug));
+    localStorage.removeItem(cashierSectionKey(slug));
+    localStorage.removeItem(cashierSectionAccessKey(slug));
+    localStorage.removeItem(cashierEmployeeNameKey(slug));
+  } catch {
+    /* ignore */
+  }
+}
+
+export function setCashierRole(
+  role: string,
+  sandbox = "dev",
+  slug?: string,
+  meta?: {
+    employeeId?: string;
+    section?: string;
+    sectionAccess?: string;
+    employeeName?: string;
+  }
+) {
   if (typeof window === "undefined") return;
   localStorage.setItem(cashierRoleKey(slug), role);
   localStorage.setItem(cashierSandboxKey(slug), sandbox || "dev");
+  if (role === "employee") {
+    if (meta?.employeeId) localStorage.setItem(cashierEmployeeKey(slug), meta.employeeId);
+    if (meta?.section) localStorage.setItem(cashierSectionKey(slug), meta.section);
+    if (meta?.sectionAccess)
+      localStorage.setItem(cashierSectionAccessKey(slug), meta.sectionAccess);
+    if (meta?.employeeName)
+      localStorage.setItem(cashierEmployeeNameKey(slug), meta.employeeName);
+  } else {
+    clearCashierSessionMeta(slug);
+  }
 }
 
 export function isDevMode(slug?: string): boolean {
   return getCashierRole(slug) === "dev";
+}
+
+export function isManagerSession(slug?: string): boolean {
+  const role = getCashierRole(slug);
+  return role === "manager" || role === "cashier" || role === "dev";
 }
 
 export function isAlertMuted(): boolean {

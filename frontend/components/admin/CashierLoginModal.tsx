@@ -37,6 +37,10 @@ export function CashierLoginModal({
         token?: string;
         role?: string;
         sandbox?: string;
+        employeeId?: string;
+        section?: string;
+        sectionAccess?: string;
+        employeeName?: string;
       }>("/api/login", {
         method: "POST",
         auth: false,
@@ -44,11 +48,20 @@ export function CashierLoginModal({
       });
       if (!data.token) throw new Error("login");
       setCashierToken(data.token, tenantSlug);
-      setCashierRole(
-        data.role === "dev" ? "dev" : "cashier",
-        data.sandbox || "dev",
-        tenantSlug
-      );
+      const role =
+        data.role === "dev"
+          ? "dev"
+          : data.role === "employee"
+            ? "employee"
+            : data.role === "manager"
+              ? "manager"
+              : "manager";
+      setCashierRole(role, data.sandbox || "dev", tenantSlug, {
+        employeeId: data.employeeId,
+        section: data.section,
+        sectionAccess: data.sectionAccess,
+        employeeName: data.employeeName,
+      });
       setPassword("");
       onSuccess?.();
     } catch {
@@ -87,7 +100,9 @@ export function CashierLoginModal({
         <h2 id="cashier-login-title" className="modal-title">
           {title}
         </h2>
-        {hint.trim() ? <p className="modal-hint">{hint.trim()}</p> : null}
+        {hint.trim() ? <p className="modal-hint">{hint.trim()}</p> : (
+          <p className="modal-hint">مدیر با رمز اصلی؛ کارمندان با رمزی که مدیر برایشان تعریف کرده وارد می‌شوند.</p>
+        )}
         <form className="cashier-login-form" onSubmit={login}>
           <label className="modal-field-label" htmlFor="cashier-password">
             رمز عبور
@@ -97,7 +112,7 @@ export function CashierLoginModal({
               type={showPassword ? "text" : "password"}
               id="cashier-password"
               className="modal-input"
-              placeholder="رمز پنل مدیریت"
+              placeholder="رمز مدیر یا کارمند"
               autoComplete="current-password"
               required
               value={password}

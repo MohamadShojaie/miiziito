@@ -4,15 +4,23 @@ import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 import {
   apiJson,
+  getCashierRole,
   getCashierToken,
+  getEmployeeSection,
+  getEmployeeSectionAccess,
   isAlertMuted,
   isDevMode,
+  isManagerSession,
   setAlertMuted,
   setCashierToken,
 } from "@/lib/api";
 import { DEFAULT_CAFE_NAME_FA } from "@/lib/brand";
 import { setMenuTenantSlug } from "@/lib/tenant";
 import type { Order, TablesPayload } from "@/lib/types";
+import {
+  isCashierEmployee,
+  isTaskOnlyEmployee,
+} from "@/lib/staff-ops";
 import { useOrdersLive } from "@/hooks/useOrdersLive";
 import { useToast } from "@/components/ToastProvider";
 import { CashierLoginModal } from "@/components/admin/CashierLoginModal";
@@ -25,6 +33,8 @@ import { SettingsTab } from "@/components/admin/SettingsTab";
 import { CrmTab } from "@/components/admin/CrmTab";
 import { CouponsTab } from "@/components/admin/CouponsTab";
 import { CostingTab } from "@/components/admin/CostingTab";
+import { StaffOpsTab } from "@/components/admin/StaffOpsTab";
+import { StaffHome } from "@/components/admin/StaffHome";
 import { HardwareTab } from "@/components/admin/HardwareTab";
 import { PaymentTerminalsTab } from "@/components/admin/PaymentTerminalsTab";
 import { ReservationsTab } from "@/components/admin/ReservationsTab";
@@ -63,6 +73,8 @@ type Tab =
   | "customers"
   | "coupons"
   | "costing"
+  | "staff"
+  | "tasks"
   | "hardware"
   | "payments"
   | "settings";
@@ -77,6 +89,8 @@ const TABS: Array<{ id: Tab; label: string }> = [
   { id: "customers", label: "باشگاه مشتریان" },
   { id: "coupons", label: "کوپن‌ها" },
   { id: "costing", label: "هزینه‌یابی" },
+  { id: "staff", label: "پرسنل" },
+  { id: "tasks", label: "وظایف من" },
   { id: "hardware", label: "سخت‌افزار" },
   { id: "payments", label: "پایانه‌های پرداخت" },
   { id: "settings", label: "تنظیمات" },
@@ -92,10 +106,22 @@ const TAB_TITLES: Record<Tab, string> = {
   customers: "باشگاه مشتریان",
   coupons: "کوپن‌ها",
   costing: "هزینه‌یابی",
+  staff: "پرسنل",
+  tasks: "وظایف من",
   hardware: "سخت‌افزار",
   payments: "پایانه‌های پرداخت",
   settings: "تنظیمات",
 };
+
+const CASHIER_EMPLOYEE_TABS: Tab[] = [
+  "orders",
+  "invoices",
+  "reservations",
+  "tables",
+  "menu",
+  "payments",
+  "tasks",
+];
 
 export function CashierApp({ tenantSlug = "" }: { tenantSlug?: string }) {
   const [brandName, setBrandName] = useState(DEFAULT_CAFE_NAME_FA);
@@ -112,6 +138,13 @@ export function CashierApp({ tenantSlug = "" }: { tenantSlug?: string }) {
   const [focusCustomerId, setFocusCustomerId] = useState<string | null>(null);
   const [planAccess, setPlanAccess] = useState<PlanAccess>(UNLOCKED_ACCESS);
   const [upgradeFeature, setUpgradeFeature] = useState<PlanFeature | null>(null);
+
+  const sessionRole = getCashierRole(tenantSlug);
+  const sessionSection = getEmployeeSection(tenantSlug);
+  const sessionAccess = getEmployeeSectionAccess(tenantSlug) || sessionSection;
+  const taskOnly = isTaskOnlyEmployee(sessionRole, sessionAccess);
+  const cashierEmp = isCashierEmployee(sessionRole, sessionAccess);
+  const manager = isManagerSession(tenantSlug);
 
   const requestUpgrade = useCallback((feature: PlanFeature) => {
     setUpgradeFeature(feature);
@@ -178,7 +211,18 @@ export function CashierApp({ tenantSlug = "" }: { tenantSlug?: string }) {
       .catch(() => {});
   }, [token]);
 
-  const live = useOrdersLive(!!token);
+  useEffect(() => {
+    if (!token) return;
+    if (cashierEmp && !CASHIER_EMPLOYEE_TABS.includes(tab)) {
+      setTab("orders");
+      return;
+    }
+    if (!manager && tab === "staff") {
+      setTab(cashierEmp ? "tasks" : "orders");
+    }
+  }, [token, tab, cashierEmp, manager]);
+
+  const live = useOrdersLive(!!token && !taskOnly);
 
   const applyPatch = useCallback(
     (data: TablesPayload | { orders?: Order[] }) => {
@@ -211,6 +255,23 @@ export function CashierApp({ tenantSlug = "" }: { tenantSlug?: string }) {
       />
     );
   }
+
+  if (taskOnly) {
+    return (
+      <div className="cashier-panel-overlay is-open staff-home-overlay">
+        <div className="cashier-panel cp-app staff-home-shell" role="dialog">
+          <StaffHome active tenantSlug={tenantSlug} onLogout={logout} />
+        </div>
+      </div>
+    );
+  }
+
+  const visibleTabs = TABS.filter((t) => {
+    if (t.id === "staff") return manager;
+    if (t.id === "tasks") return cashierEmp;
+    if (cashierEmp) return CASHIER_EMPLOYEE_TABS.includes(t.id);
+    return true;
+  });
 
   return (
     <PlanAccessProvider access={planAccess} onUpgrade={requestUpgrade}>
@@ -311,7 +372,7 @@ export function CashierApp({ tenantSlug = "" }: { tenantSlug?: string }) {
               </span>
               <span className="cashier-tabs-brand-text">{brandName}</span>
             </div>
-            {TABS.map((t) => {
+            {visibleTabs.map((t) => {
               const Icon = TAB_ICONS[t.id];
               const active = tab === t.id;
               const feature = TAB_FEATURE[t.id];
@@ -553,6 +614,32 @@ export function CashierApp({ tenantSlug = "" }: { tenantSlug?: string }) {
                 ) : (
                   <CostingTab active={tab === "costing"} />
                 )
+              ) : null}
+            </div>
+            <div
+              className={`cashier-tab-panel${tab === "staff" ? " is-active" : ""}`}
+              id="cashier-tab-staff"
+              hidden={tab !== "staff"}
+            >
+              {tab === "staff" && manager ? (
+                tabLocked && lockedTabFeature === "staffOps" ? (
+                  <UpgradePlanPanel
+                    feature="staffOps"
+                    planName={planAccess.planName}
+                    onUpgrade={() => requestUpgrade("staffOps")}
+                  />
+                ) : (
+                  <StaffOpsTab active={tab === "staff"} />
+                )
+              ) : null}
+            </div>
+            <div
+              className={`cashier-tab-panel${tab === "tasks" ? " is-active" : ""}`}
+              id="cashier-tab-tasks"
+              hidden={tab !== "tasks"}
+            >
+              {tab === "tasks" && cashierEmp ? (
+                <StaffHome active={tab === "tasks"} tenantSlug={tenantSlug} />
               ) : null}
             </div>
             <div

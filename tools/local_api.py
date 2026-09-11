@@ -3,6 +3,8 @@
 
 from __future__ import annotations
 
+import hashlib
+import hmac
 import json
 import os
 import re
@@ -10,6 +12,7 @@ import secrets
 import sys
 import threading
 import time
+from datetime import datetime
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, urlparse
@@ -40,6 +43,7 @@ SETTINGS = DATA / "settings.json"
 CUSTOMERS = DATA / "customers.json"
 COUPONS = DATA / "coupons.json"
 COSTING = DATA / "costing.json"
+STAFF_OPS = DATA / "staff-ops.json"
 HARDWARE = DATA / "hardware.json"
 RESERVATIONS = DATA / "reservations.json"
 PAYMENT_TERMINALS = DATA / "payment_terminals.json"
@@ -71,6 +75,7 @@ _TENANT_FILENAMES = _SANDBOX_FILENAMES | {
     "settings.json",
     "sessions.json",
     "costing.json",
+    "staff-ops.json",
 }
 
 try:
@@ -158,19 +163,23 @@ except Exception as _sa_import_err:  # pragma: no cover
 try:
     from tenant_slug import (
         find_cafe_by_slug,
+        hash_cashier_password,
         is_cafe_live,
         provision_tenant,
         request_tenant_slug,
         resolve_plan_access,
+        verify_cashier_password,
         verify_tenant_cashier_password,
         ENTITLEMENT_LABELS_FA,
     )
 except Exception as _tenant_import_err:  # pragma: no cover
     find_cafe_by_slug = None
+    hash_cashier_password = None
     is_cafe_live = None
     provision_tenant = None
     request_tenant_slug = None
     resolve_plan_access = None
+    verify_cashier_password = None
     verify_tenant_cashier_password = None
     ENTITLEMENT_LABELS_FA = {}
     print(f"[api] tenant_slug module unavailable: {_tenant_import_err}")
@@ -199,6 +208,7 @@ def ensure_files() -> None:
         (CUSTOMERS, "[]"),
         (COUPONS, "[]"),
         (COSTING, '{"settings":{"profitPercent":40,"monthlyPortions":1000},"ingredients":[],"bills":[],"employees":[],"recipes":[]}'),
+        (STAFF_OPS, '{"employees":[],"templates":[],"runs":[],"attendance":[]}'),
         (HARDWARE, "[]"),
         (RESERVATIONS, "[]"),
         (PAYMENT_TERMINALS, "[]"),
@@ -1856,6 +1866,434 @@ def find_costing_recipe_by_menu_key(recipes: list, menu_item_key: str) -> int:
     return -1
 
 
+DEFAULT_STAFF_SECTIONS = (
+    {"id": "waiter", "name": "سالن", "access": "tasks", "active": True},
+    {"id": "kitchen", "name": "آشپزخانه", "access": "tasks", "active": True},
+    {"id": "bar", "name": "بار", "access": "tasks", "active": True},
+    {"id": "cashier", "name": "صندوق", "access": "pos", "active": True},
+)
+STAFF_OPS_DEFAULT = (
+    '{"sections":[],"employees":[],"templates":[],"runs":[],"attendance":[]}'
+)
+
+
+def default_staff_ops_data() -> dict:
+    return {
+        "sections": [dict(s) for s in DEFAULT_STAFF_SECTIONS],
+        "employees": [],
+        "templates": [],
+        "runs": [],
+        "attendance": [],
+    }
+
+
+def sanitize_section_id(raw) -> str:
+    value = re.sub(r"[^a-zA-Z0-9_-]", "", str(raw or "").strip())
+    return value[:40]
+
+
+def normalize_staff_section(raw, known_ids=None) -> str:
+    value = sanitize_section_id(raw)
+    if known_ids is not None:
+        ids = [str(x) for x in known_ids if x]
+        if value and value in ids:
+            return value
+        return ids[0] if ids else "waiter"
+    return value or "waiter"
+
+
+def normalize_staff_section_def(raw, fallback_id: str = "") -> dict:
+    src = raw if isinstance(raw, dict) else {}
+    sid = sanitize_section_id(src.get("id") or fallback_id)
+    name = str(src.get("name") or "").strip()[:80]
+    if not sid and name:
+        sid = new_staff_id("sec")
+    access = "pos" if str(src.get("access") or "").strip() == "pos" else "tasks"
+    return {
+        "id": sid,
+        "name": name,
+        "access": access,
+        "active": src.get("active") is not False,
+    }
+
+
+def resolve_section_access(data, section_id: str) -> str:
+    sid = sanitize_section_id(section_id)
+    for row in (data or {}).get("sections") or []:
+        if isinstance(row, dict) and sanitize_section_id(row.get("id")) == sid:
+            return "pos" if str(row.get("access") or "") == "pos" else "tasks"
+    return "pos" if sid == "cashier" else "tasks"
+
+
+def staff_ops_hash_password(password: str) -> str:
+    if hash_cashier_password:
+        return hash_cashier_password(password)
+    salt = secrets.token_hex(16)
+    digest = hashlib.pbkdf2_hmac(
+        "sha256", password.encode("utf-8"), salt.encode("utf-8"), 120000
+    )
+    return f"pbkdf2${salt}${digest.hex()}"
+
+
+def staff_ops_verify_password(password: str, stored: str) -> bool:
+    if verify_cashier_password:
+        return bool(verify_cashier_password(password, stored))
+    try:
+        algo, salt, hexdigest = str(stored).split("$", 2)
+        if algo != "pbkdf2":
+            return False
+        digest = hashlib.pbkdf2_hmac(
+            "sha256", password.encode("utf-8"), salt.encode("utf-8"), 120000
+        )
+        return hmac.compare_digest(digest.hex(), hexdigest)
+    except Exception:
+        return False
+
+
+def tehran_today() -> str:
+    try:
+        from zoneinfo import ZoneInfo
+
+        return datetime.now(ZoneInfo("Asia/Tehran")).strftime("%Y-%m-%d")
+    except Exception:
+        return time.strftime("%Y-%m-%d")
+
+
+def new_staff_id(prefix: str) -> str:
+    return f"{prefix}_{secrets.token_hex(6)}"
+
+
+def normalize_staff_employee(
+    raw, fallback_id: str = "", keep_hash: str = "", keep_plain: str = "", known_ids=None
+) -> dict:
+    src = raw if isinstance(raw, dict) else {}
+    eid = str(src.get("id") or fallback_id or new_staff_id("emp")).strip()
+    name = str(src.get("name") or "").strip()
+    pwd_hash = str(src.get("passwordHash") or keep_hash or "").strip()
+    pwd_plain = str(src.get("passwordPlain") or keep_plain or "").strip()[:120]
+    return {
+        "id": eid,
+        "name": name[:80],
+        "passwordHash": pwd_hash,
+        "passwordPlain": pwd_plain,
+        "section": normalize_staff_section(src.get("section"), known_ids),
+        "active": src.get("active") is not False,
+    }
+
+
+def normalize_staff_template_items(raw) -> list:
+    items = []
+    for row in raw or []:
+        if not isinstance(row, dict):
+            continue
+        iid = str(row.get("id") or new_staff_id("ti")).strip()
+        label = str(row.get("label") or "").strip()
+        if not label:
+            continue
+        items.append({"id": iid, "label": label[:160]})
+    return items
+
+
+def normalize_staff_template(raw, fallback_id: str = "", known_ids=None) -> dict:
+    src = raw if isinstance(raw, dict) else {}
+    tid = str(src.get("id") or fallback_id or new_staff_id("tpl")).strip()
+    return {
+        "id": tid,
+        "section": normalize_staff_section(src.get("section"), known_ids),
+        "title": str(src.get("title") or "").strip()[:120],
+        "items": normalize_staff_template_items(src.get("items")),
+        "active": src.get("active") is not False,
+    }
+
+
+def normalize_staff_run_items(raw) -> list:
+    items = []
+    for row in raw or []:
+        if not isinstance(row, dict):
+            continue
+        iid = str(row.get("id") or "").strip()
+        label = str(row.get("label") or "").strip()
+        if not iid or not label:
+            continue
+        done = bool(row.get("done"))
+        item = {"id": iid, "label": label[:160], "done": done}
+        if done and row.get("doneAt"):
+            try:
+                item["doneAt"] = int(row.get("doneAt"))
+            except (TypeError, ValueError):
+                item["doneAt"] = int(time.time() * 1000)
+        items.append(item)
+    return items
+
+
+def normalize_staff_run(raw, fallback_id: str = "", known_ids=None) -> dict:
+    src = raw if isinstance(raw, dict) else {}
+    rid = str(src.get("id") or fallback_id or new_staff_id("run")).strip()
+    status = str(src.get("status") or "open").strip()
+    if status not in ("open", "submitted", "approved", "rejected"):
+        status = "open"
+    out = {
+        "id": rid,
+        "date": str(src.get("date") or "").strip()[:16],
+        "employeeId": str(src.get("employeeId") or "").strip(),
+        "templateId": str(src.get("templateId") or "").strip(),
+        "section": normalize_staff_section(src.get("section"), known_ids),
+        "items": normalize_staff_run_items(src.get("items")),
+        "status": status,
+    }
+    for key in ("submittedAt", "reviewedAt"):
+        if src.get(key):
+            try:
+                out[key] = int(src.get(key))
+            except (TypeError, ValueError):
+                pass
+    note = str(src.get("reviewNote") or "").strip()
+    if note:
+        out["reviewNote"] = note[:400]
+    return out
+
+
+def normalize_attendance_day(raw) -> dict:
+    src = raw if isinstance(raw, dict) else {}
+    date = str(src.get("date") or "").strip()[:16]
+    marks = []
+    for row in src.get("marks") or []:
+        if not isinstance(row, dict):
+            continue
+        eid = str(row.get("employeeId") or "").strip()
+        if not eid:
+            continue
+        status = "absent" if str(row.get("status") or "") == "absent" else "present"
+        try:
+            at = int(row.get("at") or 0)
+        except (TypeError, ValueError):
+            at = 0
+        by = "self" if str(row.get("by") or "") == "self" else "manager"
+        marks.append({"employeeId": eid, "status": status, "at": at, "by": by})
+    return {"date": date, "marks": marks}
+
+
+def normalize_staff_ops_data(raw) -> dict:
+    base = default_staff_ops_data()
+    if not isinstance(raw, dict):
+        return base
+    sections = []
+    seen_ids = set()
+    for row in raw.get("sections") or []:
+        if not isinstance(row, dict):
+            continue
+        item = normalize_staff_section_def(row)
+        if not item["id"] or not item["name"] or item["id"] in seen_ids:
+            continue
+        seen_ids.add(item["id"])
+        sections.append(item)
+    if not sections:
+        sections = [dict(s) for s in DEFAULT_STAFF_SECTIONS]
+    known_ids = [s["id"] for s in sections]
+    employees = []
+    for row in raw.get("employees") or []:
+        if not isinstance(row, dict):
+            continue
+        item = normalize_staff_employee(row, known_ids=known_ids)
+        if item["name"] and item["passwordHash"]:
+            employees.append(item)
+    templates = []
+    for row in raw.get("templates") or []:
+        item = normalize_staff_template(row, known_ids=known_ids)
+        if item["title"]:
+            templates.append(item)
+    runs = []
+    for row in raw.get("runs") or []:
+        item = normalize_staff_run(row, known_ids=known_ids)
+        if item["id"] and item["employeeId"] and item["templateId"]:
+            runs.append(item)
+    attendance = []
+    for row in raw.get("attendance") or []:
+        day = normalize_attendance_day(row)
+        if day["date"]:
+            attendance.append(day)
+    base["sections"] = sections
+    base["employees"] = employees
+    base["templates"] = templates
+    base["runs"] = runs
+    base["attendance"] = attendance
+    return base
+
+
+def read_staff_ops() -> dict:
+    return normalize_staff_ops_data(read_json(STAFF_OPS, default_staff_ops_data()))
+
+
+def write_staff_ops(data: dict) -> None:
+    write_json(STAFF_OPS, normalize_staff_ops_data(data))
+
+
+def public_staff_ops(data: dict) -> dict:
+    data = normalize_staff_ops_data(data)
+    employees = []
+    for emp in data["employees"]:
+        employees.append(
+            {
+                "id": emp["id"],
+                "name": emp["name"],
+                "section": emp["section"],
+                "active": emp["active"],
+                "password": str(emp.get("passwordPlain") or ""),
+            }
+        )
+    return {
+        "sections": data["sections"],
+        "employees": employees,
+        "templates": data["templates"],
+        "runs": data["runs"],
+        "attendance": data["attendance"],
+    }
+
+
+def filter_staff_ops_for_employee(data: dict, employee_id: str, section: str, date: str = "") -> dict:
+    pub = public_staff_ops(data)
+    eid = str(employee_id or "").strip()
+    section = normalize_staff_section(section)
+    date = str(date or tehran_today()).strip()
+    pub["employees"] = [
+        {k: v for k, v in e.items() if k != "password"}
+        for e in pub["employees"]
+        if e.get("id") == eid
+    ]
+    pub["templates"] = [t for t in pub["templates"] if t.get("section") == section]
+    pub["runs"] = [r for r in pub["runs"] if r.get("employeeId") == eid]
+    day = next((a for a in pub["attendance"] if a.get("date") == date), None)
+    if day:
+        marks = [m for m in (day.get("marks") or []) if m.get("employeeId") == eid]
+        pub["attendance"] = [{"date": date, "marks": marks}]
+    else:
+        pub["attendance"] = []
+    return pub
+
+
+def find_staff_list_index(rows: list, sid: str) -> int:
+    sid = str(sid or "").strip()
+    if not sid:
+        return -1
+    for i, row in enumerate(rows):
+        if isinstance(row, dict) and str(row.get("id") or "") == sid:
+            return i
+    return -1
+
+
+def find_staff_employee_by_password(data: dict, password: str):
+    for emp in data.get("employees") or []:
+        if not isinstance(emp, dict) or not emp.get("active", True):
+            continue
+        stored = str(emp.get("passwordHash") or "")
+        if stored and staff_ops_verify_password(password, stored):
+            return emp
+    return None
+
+
+def staff_password_taken(data: dict, password: str, exclude_id: str = "") -> bool:
+    exclude_id = str(exclude_id or "").strip()
+    for emp in data.get("employees") or []:
+        if not isinstance(emp, dict):
+            continue
+        if exclude_id and str(emp.get("id") or "") == exclude_id:
+            continue
+        if not emp.get("active", True):
+            continue
+        stored = str(emp.get("passwordHash") or "")
+        if stored and staff_ops_verify_password(password, stored):
+            return True
+    return False
+
+
+def ensure_staff_runs_for_date(data: dict, date: str, employee_id: str = "") -> dict:
+    date = str(date or tehran_today()).strip()
+    employee_id = str(employee_id or "").strip()
+    existing = {
+        (str(r.get("employeeId") or ""), str(r.get("templateId") or ""), str(r.get("date") or ""))
+        for r in data.get("runs") or []
+        if isinstance(r, dict)
+    }
+    templates = [
+        t
+        for t in data.get("templates") or []
+        if isinstance(t, dict) and t.get("active", True) and t.get("title")
+    ]
+    employees = [
+        e
+        for e in data.get("employees") or []
+        if isinstance(e, dict)
+        and e.get("active", True)
+        and e.get("name")
+        and (not employee_id or str(e.get("id") or "") == employee_id)
+    ]
+    changed = False
+    for emp in employees:
+        eid = str(emp.get("id") or "")
+        section = normalize_staff_section(emp.get("section"))
+        for tpl in templates:
+            if normalize_staff_section(tpl.get("section")) != section:
+                continue
+            tid = str(tpl.get("id") or "")
+            key = (eid, tid, date)
+            if key in existing:
+                continue
+            items = []
+            for it in tpl.get("items") or []:
+                if not isinstance(it, dict):
+                    continue
+                items.append(
+                    {
+                        "id": str(it.get("id") or new_staff_id("ti")),
+                        "label": str(it.get("label") or ""),
+                        "done": False,
+                    }
+                )
+            data["runs"].append(
+                {
+                    "id": new_staff_id("run"),
+                    "date": date,
+                    "employeeId": eid,
+                    "templateId": tid,
+                    "section": section,
+                    "items": items,
+                    "status": "open",
+                }
+            )
+            existing.add(key)
+            changed = True
+    if changed:
+        write_staff_ops(data)
+        return read_staff_ops()
+    return data
+
+
+def session_is_manager(session) -> bool:
+    if not isinstance(session, dict):
+        return False
+    role = str(session.get("role") or "")
+    return role in ("manager", "cashier", "dev")
+
+
+def session_is_pos(session) -> bool:
+    if session_is_manager(session):
+        return True
+    if not isinstance(session, dict):
+        return False
+    if str(session.get("role") or "") != "employee":
+        return False
+    access = str(session.get("sectionAccess") or "").strip()
+    if access in ("pos", "tasks"):
+        return access == "pos"
+    return sanitize_section_id(session.get("section")) == "cashier"
+
+
+def session_employee_id(session) -> str:
+    if not isinstance(session, dict):
+        return ""
+    return str(session.get("employeeId") or "").strip()
+
+
 def new_coupon_id() -> str:
     return f"cpn_{secrets.token_hex(8)}"
 
@@ -2559,39 +2997,64 @@ class Handler(BaseHTTPRequestHandler):
             entered = str(body.get("password") or "")
             role = ""
             sandbox = ""
+            employee_id = ""
+            section = ""
+            section_access = ""
+            employee_name = ""
             tenant_id = active_tenant()
             if tenant_id and verify_tenant_cashier_password:
                 tenant_verify = verify_tenant_cashier_password(tenant_id, entered)
                 if tenant_verify is True:
-                    role = "cashier"
+                    role = "manager"
             if not role:
                 if secret_matches(secrets_map.get("CASHIER_PASSWORD", ""), entered):
-                    role = "cashier"
+                    role = "manager"
                 elif secret_matches(secrets_map.get("DEV_PASSWORD", ""), entered):
                     role, sandbox = "dev", "dev"
                 elif secret_matches(secrets_map.get("DEV_PASSWORD_2", ""), entered):
                     role, sandbox = "dev", "dev2"
+            if not role:
+                staff_data = read_staff_ops()
+                emp = find_staff_employee_by_password(staff_data, entered)
+                if emp:
+                    role = "employee"
+                    employee_id = str(emp.get("id") or "")
+                    section = normalize_staff_section(
+                        emp.get("section"),
+                        [s["id"] for s in staff_data.get("sections") or []],
+                    )
+                    section_access = resolve_section_access(staff_data, section)
+                    employee_name = str(emp.get("name") or "")
             if not role:
                 return self._json(401, {"error": "bad_password"})
             new_token = secrets.token_hex(24)
             sessions = read_json(SESSIONS, {})
             if not isinstance(sessions, dict):
                 sessions = {}
-            sessions[new_token] = {
+            rec = {
                 "created": int(time.time()),
                 "role": role,
                 "sandbox": sandbox,
             }
+            if role == "employee":
+                rec["employeeId"] = employee_id
+                rec["section"] = section
+                rec["sectionAccess"] = section_access
+                rec["employeeName"] = employee_name
+            sessions[new_token] = rec
             write_json(SESSIONS, sessions)
-            return self._json(
-                200,
-                {
-                    "token": new_token,
-                    "role": role,
-                    "sandbox": sandbox,
-                    "dev": role == "dev",
-                },
-            )
+            payload = {
+                "token": new_token,
+                "role": role,
+                "sandbox": sandbox,
+                "dev": role == "dev",
+            }
+            if role == "employee":
+                payload["employeeId"] = employee_id
+                payload["section"] = section
+                payload["sectionAccess"] = section_access
+                payload["employeeName"] = employee_name
+            return self._json(200, payload)
 
         if route == "logout" and method == "POST":
             sessions = read_json(SESSIONS, {})
@@ -2599,6 +3062,17 @@ class Handler(BaseHTTPRequestHandler):
                 del sessions[token]
                 write_json(SESSIONS, sessions)
             return self._json(200, {"ok": True})
+
+        # Task-only employees may only use staff-ops + logout (+ settings GET).
+        if (
+            isinstance(session, dict)
+            and str(session.get("role") or "") == "employee"
+            and not session_is_pos(session)
+        ):
+            if route not in ("staff-ops", "logout") and not (
+                route == "settings" and method == "GET"
+            ):
+                return self._json(403, {"error": "forbidden_role"})
 
         if route == "menu" and method == "GET":
             return self._json(200, {"overrides": read_json(MENU, {})})
@@ -3135,6 +3609,8 @@ class Handler(BaseHTTPRequestHandler):
         if route == "settings" and method == "POST":
             if not session:
                 return self._json(401, {"error": "auth_required"})
+            if not session_is_manager(session):
+                return self._json(403, {"error": "forbidden_role"})
             incoming = body.get("settings") if isinstance(body.get("settings"), dict) else {}
             settings = merge_site_settings(read_site_settings(), incoming)
             settings["updatedAt"] = int(time.time() * 1000)
@@ -3576,6 +4052,358 @@ class Handler(BaseHTTPRequestHandler):
                 costing["recipes"].pop(idx)
                 write_costing(costing)
                 return self._json(200, {"ok": True, "id": rid, "costing": read_costing()})
+
+            return self._json(400, {"error": "invalid_action"})
+
+        if route == "staff-ops" and method == "GET":
+            if not session:
+                return self._json(401, {"error": "auth_required"})
+            data = read_staff_ops()
+            date_raw = qs.get("date")
+            if isinstance(date_raw, list):
+                date = str(date_raw[0] or tehran_today())
+            else:
+                date = str(date_raw or tehran_today())
+            if session_is_manager(session):
+                if not self.require_entitlement("staffOps"):
+                    return
+                data = ensure_staff_runs_for_date(data, date)
+                return self._json(200, {"staffOps": public_staff_ops(data), "today": tehran_today()})
+            eid = session_employee_id(session)
+            if not eid:
+                return self._json(403, {"error": "forbidden_role"})
+            data = ensure_staff_runs_for_date(data, date, eid)
+            section = normalize_staff_section(session.get("section"))
+            return self._json(
+                200,
+                {
+                    "staffOps": filter_staff_ops_for_employee(data, eid, section, date),
+                    "today": tehran_today(),
+                    "me": {
+                        "employeeId": eid,
+                        "section": section,
+                        "name": str(session.get("employeeName") or ""),
+                    },
+                },
+            )
+
+        if route == "staff-ops" and method == "POST":
+            if not session:
+                return self._json(401, {"error": "auth_required"})
+            action = str(body.get("action") or "")
+            data = read_staff_ops()
+            today = tehran_today()
+
+            # Employee actions
+            if action in ("toggleItem", "submitRun", "markSelfAttendance"):
+                eid = session_employee_id(session)
+                if str(session.get("role") or "") != "employee" or not eid:
+                    return self._json(403, {"error": "forbidden_role"})
+                section = normalize_staff_section(session.get("section"))
+
+                def employee_payload(extra=None):
+                    latest = read_staff_ops()
+                    payload = {
+                        "ok": True,
+                        "staffOps": filter_staff_ops_for_employee(
+                            latest, eid, section, today
+                        ),
+                    }
+                    if extra:
+                        payload.update(extra)
+                    return self._json(200, payload)
+
+                if action == "markSelfAttendance":
+                    status = "absent" if str(body.get("status") or "") == "absent" else "present"
+                    day_idx = -1
+                    for i, day in enumerate(data.get("attendance") or []):
+                        if isinstance(day, dict) and str(day.get("date") or "") == today:
+                            day_idx = i
+                            break
+                    if day_idx < 0:
+                        data["attendance"].append({"date": today, "marks": []})
+                        day_idx = len(data["attendance"]) - 1
+                    marks = data["attendance"][day_idx].setdefault("marks", [])
+                    found = False
+                    for m in marks:
+                        if str(m.get("employeeId") or "") == eid:
+                            m["status"] = status
+                            m["at"] = int(time.time() * 1000)
+                            m["by"] = "self"
+                            found = True
+                            break
+                    if not found:
+                        marks.append(
+                            {
+                                "employeeId": eid,
+                                "status": status,
+                                "at": int(time.time() * 1000),
+                                "by": "self",
+                            }
+                        )
+                    write_staff_ops(data)
+                    return employee_payload()
+
+                run_id = str(body.get("runId") or body.get("id") or "").strip()
+                idx = find_staff_list_index(data["runs"], run_id)
+                if idx < 0:
+                    return self._json(404, {"error": "not_found"})
+                run = data["runs"][idx]
+                if str(run.get("employeeId") or "") != eid:
+                    return self._json(403, {"error": "forbidden_role"})
+                if str(run.get("status") or "") not in ("open", "rejected"):
+                    return self._json(400, {"error": "run_locked"})
+                if action == "toggleItem":
+                    item_id = str(body.get("itemId") or "").strip()
+                    done = bool(body.get("done"))
+                    for item in run.get("items") or []:
+                        if str(item.get("id") or "") == item_id:
+                            item["done"] = done
+                            if done:
+                                item["doneAt"] = int(time.time() * 1000)
+                            else:
+                                item.pop("doneAt", None)
+                            break
+                    else:
+                        return self._json(404, {"error": "item_not_found"})
+                    if run.get("status") == "rejected":
+                        run["status"] = "open"
+                        run.pop("reviewedAt", None)
+                        run.pop("reviewNote", None)
+                    write_staff_ops(data)
+                    return employee_payload({"run": run})
+                # submitRun
+                run["status"] = "submitted"
+                run["submittedAt"] = int(time.time() * 1000)
+                write_staff_ops(data)
+                return employee_payload({"run": run})
+
+            # Manager actions
+            if not session_is_manager(session):
+                return self._json(403, {"error": "forbidden_role"})
+            if not self.require_entitlement("staffOps"):
+                return
+
+            if action == "upsertSection":
+                sid = sanitize_section_id(body.get("id"))
+                idx = find_staff_list_index(data["sections"], sid) if sid else -1
+                record = normalize_staff_section_def(body, sid)
+                if not record["name"]:
+                    return self._json(400, {"error": "name_required"})
+                if not record["id"]:
+                    return self._json(400, {"error": "id_required"})
+                if idx < 0:
+                    if find_staff_list_index(data["sections"], record["id"]) >= 0:
+                        return self._json(400, {"error": "section_exists"})
+                    if len(data["sections"]) >= 40:
+                        return self._json(400, {"error": "too_many"})
+                    data["sections"].append(record)
+                else:
+                    record["id"] = data["sections"][idx]["id"]
+                    data["sections"][idx] = record
+                write_staff_ops(data)
+                return self._json(
+                    200,
+                    {
+                        "ok": True,
+                        "section": record,
+                        "staffOps": public_staff_ops(read_staff_ops()),
+                    },
+                )
+
+            if action == "removeSection":
+                rid = sanitize_section_id(body.get("id"))
+                if not rid:
+                    return self._json(400, {"error": "id_required"})
+                idx = find_staff_list_index(data["sections"], rid)
+                if idx < 0:
+                    return self._json(404, {"error": "not_found"})
+                if len(data["sections"]) <= 1:
+                    return self._json(400, {"error": "section_required"})
+                for emp in data.get("employees") or []:
+                    if sanitize_section_id(emp.get("section")) == rid:
+                        return self._json(400, {"error": "section_in_use"})
+                for tpl in data.get("templates") or []:
+                    if sanitize_section_id(tpl.get("section")) == rid:
+                        return self._json(400, {"error": "section_in_use"})
+                data["sections"].pop(idx)
+                write_staff_ops(data)
+                return self._json(
+                    200,
+                    {"ok": True, "id": rid, "staffOps": public_staff_ops(read_staff_ops())},
+                )
+
+            if action == "upsertEmployee":
+                known_ids = [s["id"] for s in data.get("sections") or []]
+                eid = str(body.get("id") or "").strip()
+                password = str(body.get("password") or "")
+                idx = find_staff_list_index(data["employees"], eid) if eid else -1
+                keep_hash = (
+                    str(data["employees"][idx].get("passwordHash") or "")
+                    if idx >= 0
+                    else ""
+                )
+                keep_plain = (
+                    str(data["employees"][idx].get("passwordPlain") or "")
+                    if idx >= 0
+                    else ""
+                )
+                if password:
+                    if tenant_id := active_tenant():
+                        if verify_tenant_cashier_password and verify_tenant_cashier_password(
+                            tenant_id, password
+                        ):
+                            return self._json(400, {"error": "password_matches_manager"})
+                    secrets_map = parse_secrets()
+                    if secret_matches(secrets_map.get("CASHIER_PASSWORD", ""), password):
+                        return self._json(400, {"error": "password_matches_manager"})
+                    if staff_password_taken(data, password, eid):
+                        return self._json(400, {"error": "password_taken"})
+                    keep_hash = staff_ops_hash_password(password)
+                    keep_plain = password
+                elif idx < 0:
+                    return self._json(400, {"error": "password_required"})
+                record = normalize_staff_employee(
+                    body, eid, keep_hash, keep_plain, known_ids=known_ids
+                )
+                if not record["name"]:
+                    return self._json(400, {"error": "name_required"})
+                if not record["passwordHash"]:
+                    return self._json(400, {"error": "password_required"})
+                if idx < 0:
+                    data["employees"].append(record)
+                else:
+                    data["employees"][idx] = record
+                write_staff_ops(data)
+                pub_emp = {
+                    "id": record["id"],
+                    "name": record["name"],
+                    "section": record["section"],
+                    "active": record["active"],
+                    "password": record.get("passwordPlain") or "",
+                }
+                return self._json(
+                    200,
+                    {
+                        "ok": True,
+                        "employee": pub_emp,
+                        "staffOps": public_staff_ops(read_staff_ops()),
+                    },
+                )
+
+            if action == "removeEmployee":
+                rid = str(body.get("id") or "").strip()
+                if not rid:
+                    return self._json(400, {"error": "id_required"})
+                idx = find_staff_list_index(data["employees"], rid)
+                if idx < 0:
+                    return self._json(404, {"error": "not_found"})
+                data["employees"].pop(idx)
+                write_staff_ops(data)
+                return self._json(
+                    200, {"ok": True, "id": rid, "staffOps": public_staff_ops(read_staff_ops())}
+                )
+
+            if action == "upsertTemplate":
+                known_ids = [s["id"] for s in data.get("sections") or []]
+                record = normalize_staff_template(
+                    body, str(body.get("id") or ""), known_ids=known_ids
+                )
+                if not record["title"]:
+                    return self._json(400, {"error": "title_required"})
+                if not record["items"]:
+                    return self._json(400, {"error": "items_required"})
+                idx = find_staff_list_index(data["templates"], record["id"])
+                if idx < 0:
+                    data["templates"].append(record)
+                else:
+                    data["templates"][idx] = record
+                write_staff_ops(data)
+                return self._json(
+                    200,
+                    {
+                        "ok": True,
+                        "template": record,
+                        "staffOps": public_staff_ops(read_staff_ops()),
+                    },
+                )
+
+            if action == "removeTemplate":
+                rid = str(body.get("id") or "").strip()
+                if not rid:
+                    return self._json(400, {"error": "id_required"})
+                idx = find_staff_list_index(data["templates"], rid)
+                if idx < 0:
+                    return self._json(404, {"error": "not_found"})
+                data["templates"].pop(idx)
+                write_staff_ops(data)
+                return self._json(
+                    200, {"ok": True, "id": rid, "staffOps": public_staff_ops(read_staff_ops())}
+                )
+
+            if action == "setAttendance":
+                eid = str(body.get("employeeId") or "").strip()
+                date = str(body.get("date") or today).strip() or today
+                status = "absent" if str(body.get("status") or "") == "absent" else "present"
+                if not eid:
+                    return self._json(400, {"error": "employee_required"})
+                day_idx = -1
+                for i, day in enumerate(data.get("attendance") or []):
+                    if isinstance(day, dict) and str(day.get("date") or "") == date:
+                        day_idx = i
+                        break
+                if day_idx < 0:
+                    data["attendance"].append({"date": date, "marks": []})
+                    day_idx = len(data["attendance"]) - 1
+                marks = data["attendance"][day_idx].setdefault("marks", [])
+                found = False
+                for m in marks:
+                    if str(m.get("employeeId") or "") == eid:
+                        m["status"] = status
+                        m["at"] = int(time.time() * 1000)
+                        m["by"] = "manager"
+                        found = True
+                        break
+                if not found:
+                    marks.append(
+                        {
+                            "employeeId": eid,
+                            "status": status,
+                            "at": int(time.time() * 1000),
+                            "by": "manager",
+                        }
+                    )
+                write_staff_ops(data)
+                return self._json(200, {"ok": True, "staffOps": public_staff_ops(read_staff_ops())})
+
+            if action == "ensureRuns":
+                date = str(body.get("date") or today).strip() or today
+                data = ensure_staff_runs_for_date(data, date)
+                return self._json(200, {"ok": True, "staffOps": public_staff_ops(data)})
+
+            if action == "reviewRun":
+                run_id = str(body.get("runId") or body.get("id") or "").strip()
+                decision = str(body.get("decision") or body.get("status") or "").strip()
+                if decision not in ("approved", "rejected"):
+                    return self._json(400, {"error": "invalid_decision"})
+                idx = find_staff_list_index(data["runs"], run_id)
+                if idx < 0:
+                    return self._json(404, {"error": "not_found"})
+                run = data["runs"][idx]
+                if str(run.get("status") or "") != "submitted":
+                    return self._json(400, {"error": "not_submitted"})
+                run["status"] = decision
+                run["reviewedAt"] = int(time.time() * 1000)
+                note = str(body.get("reviewNote") or body.get("note") or "").strip()
+                if note:
+                    run["reviewNote"] = note[:400]
+                elif "reviewNote" in run:
+                    del run["reviewNote"]
+                write_staff_ops(data)
+                return self._json(
+                    200,
+                    {"ok": True, "run": run, "staffOps": public_staff_ops(read_staff_ops())},
+                )
 
             return self._json(400, {"error": "invalid_action"})
 
